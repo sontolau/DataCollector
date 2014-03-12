@@ -60,14 +60,14 @@ int  DC_list_init (DC_list_t *list, ...) {
     DC_link_add_after (&list->__head, &list->__tail);
     va_start (ap, list);
     while ((arg = va_arg (ap, void*))) {
-        DC_list_add (list, arg);
+        DC_list_add_object (list, arg);
     }
     va_end (ap);
 
     return 0;
 }
 
-void DC_list_add (DC_list_t *list, void *obj) {
+void DC_list_add_object (DC_list_t *list, void *obj) {
     struct list_carrier *cr;
 
     cr = (struct list_carrier*)malloc(sizeof (struct list_carrier));

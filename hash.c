@@ -114,7 +114,7 @@ int DC_hash_add_object (DC_hash_t *hash, void *key, void *obj) {
         return -1;
     }
     
-    DC_list_add (list, (void*)hc);
+    DC_list_add_object (list, (void*)hc);
     hash->num_objects++;
 
     return 0;

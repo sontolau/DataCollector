@@ -30,6 +30,10 @@ static int __dict_compare_func (void *obj, void *key) {
 }
 
 static void __dict_destroy_func (void *obj) {
+    void **keyobj = (void**)obj;
+    char *strkey = (char*)keyobj[0];
+
+    free (strkey);
     free (obj);
 }
 
@@ -72,7 +76,7 @@ int DC_dict_add_object_with_key (DC_dict_t *dic, const char *key, const void *ob
         return -1;
     }
 
-    keyobj[0] = (char*)key;
+    keyobj[0] = strdup ((char*)key);
     keyobj[1] = (void*)obj;
 
     return DC_hash_add_object (dic, (char*)key, (void*)keyobj);
