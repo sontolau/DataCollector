@@ -154,7 +154,7 @@ void DC_hash_destroy (DC_hash_t *hash) {
     listmap = (DC_list_t**)hash->__hash_map;
     for (i=0; i<hash->size; i++) {
         for (j=0; j<hash->size; j++) {
-            DC_list_destroy (&listmap[i][j]);
+            DC_list_destroy (&listmap[i][j], NULL);
         }
     }
 }

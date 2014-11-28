@@ -84,15 +84,19 @@ void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {
     return cr?cr->obj:NULL;
 }
 
-void DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
+void *DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
     struct list_carrier *cr;
+    void                *obj;
 
     cr = __find_carrier_by_idx (list, index);
     if (cr) {
         DC_link_remove (&cr->link);
+        obj = cr->obj;
         list->count--;
         free (cr);
     }
+
+    return obj;
 }
 
 void DC_list_remove_object (DC_list_t *list, void *obj) {
@@ -102,7 +106,7 @@ void DC_list_remove_object (DC_list_t *list, void *obj) {
     if (cr) {
         DC_link_remove (&cr->link);
         list->count--;
-         free (cr);
+        free (cr);
     }
 }
 
@@ -128,8 +132,13 @@ void *DC_list_next_object (const DC_list_t *list, void **saveptr) {
     return cr?cr->obj:NULL;
 }
 
-void DC_list_destroy (DC_list_t *list) {
-    while (list->count > 0) {
-        DC_list_remove_object_at_index (list, list->count-1);
+void DC_list_destroy (DC_list_t *list, void (*cb)(void*)) {
+    void *obj;
+
+    while (list && list->count > 0) {
+        obj = DC_list_remove_object_at_index (list, list->count-1);
+        if (cb) {
+            cb (obj);
+        }
     }
 }

@@ -4,8 +4,9 @@
 #include "libdc.h"
 #include "link.h"
 
+DC_CPP(extern "C" {)
 
-typedef struct DC_list 
+typedef struct _DC_list 
 {
     unsigned int count;
     DC_link_t __head;
@@ -14,7 +15,7 @@ typedef struct DC_list
 
 /*
  * initialize a variable of list type, which must be
- * end with a NULL value.
+ * ended with a NULL value.
  * example:
  *    DC_list_t list/
  *    char *name = "John";
@@ -29,8 +30,8 @@ extern void DC_list_add_object (DC_list_t *list, void *obj);
 extern void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index);
 
 // remove a object at the index from list.
-extern void DC_list_remove_object_at_index (DC_list_t *list, 
-                                            unsigned int index);
+extern void *DC_list_remove_object_at_index (DC_list_t *list, 
+                                             unsigned int index);
 
 // remove a object from list.
 extern void DC_list_remove_object (DC_list_t *list, void *obj);
@@ -39,5 +40,8 @@ extern void DC_list_remove_object (DC_list_t *list, void *obj);
 extern void *DC_list_next_object (const DC_list_t *list, void **saveptr);
 
 
-extern void DC_list_destroy (DC_list_t *list);
+extern void DC_list_destroy (DC_list_t *list,
+                             void (*cb)(void*));
+
+DC_CPP(})
 #endif

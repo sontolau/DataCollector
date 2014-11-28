@@ -1,6 +1,10 @@
 #ifndef _DC_HASH_H
 #define _DC_HASH_H
 
+#include "libdc.h"
+
+DC_CPP (extern "C" {)
+
 /*
  * The hash_id_func_t will return an ID for getting 
  * a hash path with the KEY argument.
@@ -23,10 +27,11 @@ typedef void (*hash_destroy_func_t) (void *obj);
 typedef struct DC_hash {
     unsigned int size;
     unsigned int num_objects;
-    void **__hash_map;
-    hash_id_func_t  __hash_id;
-    hash_compare_func_t __hash_compare;
-    hash_destroy_func_t __hash_destroy;
+
+    void **__hash_map; //private
+    hash_id_func_t  __hash_id; //private
+    hash_compare_func_t __hash_compare; //private
+    hash_destroy_func_t __hash_destroy; //private
 } DC_hash_t;
 
 extern int DC_hash_init (DC_hash_t *hash, 
@@ -42,5 +47,7 @@ extern void *DC_hash_get_object (DC_hash_t *hash, void *key);
 extern void DC_hash_remove_object (DC_hash_t *hash, void *key);
 
 extern void DC_hash_destroy (DC_hash_t *hash);
+
+DC_CPP (})
 
 #endif

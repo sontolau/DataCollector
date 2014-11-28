@@ -3,6 +3,8 @@
 
 #include "hash.h"
 
+DC_CPP (extern "C" {)
+
 typedef DC_hash_t DC_dict_t;
 
 /*
@@ -35,4 +37,5 @@ extern void *DC_dict_get_object_with_key (DC_dict_t *dic,
 // destroy a dictionary.
 extern void DC_dict_destroy (DC_dict_t *dic);
 
+DC_CPP (})
 #endif 
