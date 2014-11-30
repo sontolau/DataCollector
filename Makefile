@@ -2,7 +2,7 @@ TESTAPP=test
 LIB=libDC.a
 CC=cc
 CFLAGS=-fPIC -Wall -g
-OBJS=link.o list.o hash.o dict.o number.o
+OBJS=link.o list.o hash.o dict.o number.o signal.o
 INCDIRS=-I./
 
 all: ${LIB}

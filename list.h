@@ -38,6 +38,7 @@ extern void DC_list_remove_object (DC_list_t *list, void *obj);
 // to use this to get all objects in order.
 extern void *DC_list_next_object (const DC_list_t *list, void **saveptr);
 
+extern void DC_list_loop (const DC_list_t *list, int (*cb)(void*));
 
 extern void DC_list_destroy (DC_list_t *list);
 #endif
