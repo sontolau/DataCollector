@@ -132,6 +132,7 @@ void *DC_list_next_object (const DC_list_t *list, void **saveptr) {
     return cr?cr->obj:NULL;
 }
 
+<<<<<<< HEAD
 void DC_list_destroy (DC_list_t *list, void (*cb)(void*)) {
     void *obj;
 
@@ -140,5 +141,32 @@ void DC_list_destroy (DC_list_t *list, void (*cb)(void*)) {
         if (cb) {
             cb (obj);
         }
+=======
+void DC_list_loop (const DC_list_t *list, int (*cb)(void*))
+{
+    DC_link_t *head, *tail;
+    DC_link_t *curlist;
+    struct list_carrier *cr;
+
+    head = (DC_link_t*)&list->__head;
+    tail = (DC_link_t*)&list->__tail;
+    curlist = head->next;
+
+    while (curlist != tail) {
+        cr = DC_link_container_of (curlist, struct list_carrier, link);
+        if (cr && cb) {
+            if (!cb (cr->obj)) {
+                break;
+            }
+        }
+        curlist = curlist->next;
+    }
+    
+}
+
+void DC_list_destroy (DC_list_t *list) {
+    while (list->count > 0) {
+        DC_list_remove_object_at_index (list, list->count-1);
+>>>>>>> 106bc725c08cc347d613535ca0f520f13d986b1e
     }
 }
