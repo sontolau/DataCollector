@@ -2,6 +2,7 @@
 #include "link.h"
 #include "list.h"
 #include "dict.h"
+#include "queue.h"
 
 struct x {
     int y;
@@ -75,6 +76,33 @@ int main(){
 
     DC_dict_destroy (&mydict);
 */
+
+    DC_queue_t queue;
+
+    if (DC_queue_init (&queue, 10, 0) < 0) {
+        printf ("DC_queue_init failed\n");
+        return -1;
+    }
+    int i;
+
+    for (i=1; i<20; i++) {
+       if (DC_queue_push (&queue, (qobject_t)i, 0) == -1) {
+            printf ("The queue is full\n");
+            break;
+        }
+    }
+
+    for (i=0; i<12; i++) {
+        qobject_t o = DC_queue_pop (&queue);
+        if (o == 0) {
+            printf ("Queue is empty\n");
+            break;
+        } else {
+            printf ("%u\n", o);
+        }
+    }
+
+    DC_queue_destroy (&queue);
     return 0; 
 
 }

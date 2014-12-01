@@ -38,6 +38,7 @@ int DC_queue_is_empty (const DC_queue_t *queue)
 
 int DC_queue_is_full (const DC_queue_t *queue)
 {
+    printf ("%p, %p, %u\n", queue->__tail_ptr, queue->__head_ptr, *queue->__head_ptr);
     return queue->__tail_ptr == queue->__head_ptr &&\
            *queue->__head_ptr != queue->zero_type;
 }
