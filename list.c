@@ -52,13 +52,15 @@ struct list_carrier *__find_carrier_by_idx (DC_list_t *list,
     return cr;
 }
 
-int  DC_list_init (DC_list_t *list, ...) {
+int  DC_list_init (DC_list_t *list, void (*cb)(void*), ...) {
     void *arg = NULL;
     va_list ap;
 
     memset (list, '\0', sizeof (DC_list_t));
     DC_link_add_after (&list->__head, &list->__tail);
-    va_start (ap, list);
+    list->__destroy_cb = cb;
+
+    va_start (ap, cb);
     while ((arg = va_arg (ap, void*))) {
         DC_list_add_object (list, arg);
     }
@@ -67,14 +69,46 @@ int  DC_list_init (DC_list_t *list, ...) {
     return 0;
 }
 
-void DC_list_add_object (DC_list_t *list, void *obj) {
+int DC_list_add_object (DC_list_t *list, void *obj) {
     struct list_carrier *cr;
 
     cr = (struct list_carrier*)malloc(sizeof (struct list_carrier));
+    if (cr == NULL) {
+        return -1;
+    }
+
     list->count++;
     
     cr->obj = obj;
     DC_link_add_before (&list->__tail, &cr->link);
+    return 0;
+}
+
+int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int index)
+{
+    struct list_carrier *cr;
+    DC_link_t *linkptr = &list->__head;
+
+    cr = (struct list_carrier*)malloc (sizeof (struct list_carrier));
+    if (cr == NULL) {
+        return -1;
+    }
+
+    DC_link_foreach (linkptr, ((DC_link_t*)&list->__head)) {
+        if (!index) {
+            break;
+        }
+        index--;
+    }
+
+    if (index > 0) {
+        return -1;
+    }
+
+    cr->obj = obj;
+    DC_link_add (linkptr, &cr->link);
+
+    return 0;
 }
 
 void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {
@@ -84,7 +118,7 @@ void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {
     return cr?cr->obj:NULL;
 }
 
-void *DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
+void DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
     struct list_carrier *cr;
     void                *obj;
 
@@ -92,11 +126,12 @@ void *DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
     if (cr) {
         DC_link_remove (&cr->link);
         obj = cr->obj;
+        if (list->__destroy_cb) {
+            list->__destroy_cb (obj);
+        }
         list->count--;
         free (cr);
     }
-
-    return obj;
 }
 
 void DC_list_remove_object (DC_list_t *list, void *obj) {
@@ -110,38 +145,17 @@ void DC_list_remove_object (DC_list_t *list, void *obj) {
     }
 }
 
-void *DC_list_next_object (const DC_list_t *list, void **saveptr) {
-    DC_link_t *cur = *saveptr;
-    static DC_link_t *__head,*__tail;
-    struct list_carrier *cr;
-
-    if (cur == NULL) {
-        __head = (DC_link_t*)&list->__head;
-        __tail = (DC_link_t*)&list->__tail;
-        cur = __head->next;
+void DC_list_remove_all_objects (DC_list_t *list)
+{
+    while (list->count) {
+        DC_list_remove_object_at_index (list, 0);
     }
-
-    if (cur == __tail) {
-        *saveptr = NULL;
-        cur      = NULL;
-    } else {
-        *saveptr = cur->next;
-    }
-
-    cr = (cur?DC_link_container_of (cur, struct list_carrier, link):NULL);
-    return cr?cr->obj:NULL;
 }
 
-<<<<<<< HEAD
-void DC_list_destroy (DC_list_t *list, void (*cb)(void*)) {
-    void *obj;
+void DC_list_destroy (DC_list_t *list) {
+    DC_list_remove_all_objects (list);
+}
 
-    while (list && list->count > 0) {
-        obj = DC_list_remove_object_at_index (list, list->count-1);
-        if (cb) {
-            cb (obj);
-        }
-=======
 void DC_list_loop (const DC_list_t *list, int (*cb)(void*))
 {
     DC_link_t *head, *tail;
@@ -161,12 +175,27 @@ void DC_list_loop (const DC_list_t *list, int (*cb)(void*))
         }
         curlist = curlist->next;
     }
-    
 }
 
-void DC_list_destroy (DC_list_t *list) {
-    while (list->count > 0) {
-        DC_list_remove_object_at_index (list, list->count-1);
->>>>>>> 106bc725c08cc347d613535ca0f520f13d986b1e
+void *DC_list_next_object (const DC_list_t *list, void **saveptr) 
+{
+    DC_link_t *cur = *saveptr;
+    static DC_link_t *__head,*__tail;
+    struct list_carrier *cr;
+
+    if (cur == NULL) {
+        __head = (DC_link_t*)&list->__head;
+        __tail = (DC_link_t*)&list->__tail;
+        cur = __head->next;
     }
+
+    if (cur == __tail) {
+        *saveptr = NULL;
+        cur      = NULL;
+    } else {
+        *saveptr = cur->next;
+    }
+
+    cr = (cur?DC_link_container_of (cur, struct list_carrier, link):NULL);
+    return cr?cr->obj:NULL;
 }

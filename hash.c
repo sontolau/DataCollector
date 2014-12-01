@@ -8,13 +8,13 @@
 
 
 struct hash_carrier {
-    void *key;
+    DC_key_t key;
     void *obj;
 };
 
 static DC_list_t *__list_entry (DC_list_t **map, 
                                 unsigned int size,
-                                void *key, 
+                                DC_key_t key, 
                                 hash_id_func_t id_func) {
     unsigned int id;
 
@@ -30,7 +30,7 @@ static DC_list_t *__list_entry (DC_list_t **map,
     return &map[id][id];
 }
 
-static struct hash_carrier *__new_hash_carrier (void *key, void *obj) {
+static struct hash_carrier *__new_hash_carrier (DC_key_t key, void *obj) {
     struct hash_carrier *hc = NULL;
 
     hc = (struct hash_carrier*)malloc (sizeof (struct hash_carrier));
@@ -41,7 +41,7 @@ static struct hash_carrier *__new_hash_carrier (void *key, void *obj) {
     return hc;
 }
 
-static struct hash_carrier *__find_hash_carrier (DC_hash_t *hash, void *key) {
+static struct hash_carrier *__find_hash_carrier (DC_hash_t *hash, DC_key_t key) {
     DC_list_t *list;
     void *saveptr = NULL;
     struct hash_carrier *hc;
@@ -65,6 +65,11 @@ static struct hash_carrier *__find_hash_carrier (DC_hash_t *hash, void *key) {
     return NULL;
 }
 
+static void __list_cb (void *data)
+{
+    free (data);
+}
+
 int DC_hash_init (DC_hash_t *hash, 
                   int size,
                   hash_id_func_t id_func,
@@ -83,21 +88,21 @@ int DC_hash_init (DC_hash_t *hash,
     for (i=0; i<size; i++) {
         list_map[i] = (DC_list_t*)calloc (size, sizeof (DC_list_t));
         for (j=0; j<size; j++) {
-            DC_list_init (&list_map[i][j], NULL);
+            DC_list_init (&list_map[i][j], __list_cb, NULL);
         }
     }
 
     hash->size = size;
     hash->num_objects = 0;
-    hash->__hash_map = (void**)list_map;
-    hash->__hash_id = id_func;
+    hash->__hash_map  = (void**)list_map;
+    hash->__hash_id   = id_func;
     hash->__hash_compare = comp_func;
     hash->__hash_destroy = dest_func;
 
     return 0;
 }
 
-int DC_hash_add_object (DC_hash_t *hash, void *key, void *obj) {
+int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
     DC_list_t *list;
     struct hash_carrier *hc;
 
@@ -110,25 +115,25 @@ int DC_hash_add_object (DC_hash_t *hash, void *key, void *obj) {
         return -1;
     }
 
-    if (!(hc = __new_hash_carrier (key, obj))) {
+    if (!(hc = __new_hash_carrier (key, obj)) ||
+        DC_list_add_object (list, (void*)hc) < 0) {
         return -1;
     }
     
-    DC_list_add_object (list, (void*)hc);
     hash->num_objects++;
 
     return 0;
 }
 
 
-void *DC_hash_get_object (DC_hash_t *hash, void *key) {
+void *DC_hash_get_object (DC_hash_t *hash, DC_key_t key) {
     struct hash_carrier *hc;
 
     hc = __find_hash_carrier (hash, key);
     return hc?hc->obj:NULL;
 }
 
-void DC_hash_remove_object (DC_hash_t *hash, void *key) {
+void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key) {
     struct hash_carrier *hc;
     DC_list_t *list;
 
@@ -139,22 +144,29 @@ void DC_hash_remove_object (DC_hash_t *hash, void *key) {
 
     if (list && (hc = __find_hash_carrier (hash, key))) {
         hash->num_objects--;
-        DC_list_remove_object (list, (void*)hc);
+        //DC_list_remove_object (list, (void*)hc);
         if (hash->__hash_destroy) {
             hash->__hash_destroy (hc->obj);
         }
-        free (hc);
+        DC_list_remove_object (list, (void*)hc);
+        hash->num_objects--;
     }
 }
 
 void DC_hash_destroy (DC_hash_t *hash) {
     int i, j;
     DC_list_t **listmap;
+    void *saveptr = NULL;
+    struct hash_carrier *cr;
 
     listmap = (DC_list_t**)hash->__hash_map;
     for (i=0; i<hash->size; i++) {
         for (j=0; j<hash->size; j++) {
-            DC_list_destroy (&listmap[i][j], NULL);
+            while (hash->__hash_destroy && (cr = DC_list_next_object (&listmap[i][j], &saveptr))) {
+                hash->__hash_destroy (cr->obj);
+            }
+
+            DC_list_destroy (&listmap[i][j]);
         }
     }
 }

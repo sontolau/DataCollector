@@ -1,9 +1,16 @@
 #include "memory.h"
 
+static void __free_buf (void *buf)
+{
+    DC_buf_t *bf = (DC_buf_t*)buf;
+
+    free (bf->buffer);
+}
+
 int DC_buf_pool_init (DC_buf_pool_t *bp)
 {
     memset (bp, '\0', sizeof (DC_buf_pool_t));
-    return DC_list_init (&bp->__buflist, NULL);
+    return DC_list_init (&bp->__buflist, __free_buf, NULL);
 }
 
 DC_buf_t *DC_buf_alloc (DC_buf_pool_t *bp, unsigned long size)
@@ -44,16 +51,9 @@ void DC_buf_free (DC_buf_pool_t *bp, DC_buf_t *buf)
     }
 }
 
-static void __free_buf (void *buf)
-{
-    DC_buf_t *bf = (DC_buf_t*)buf;
-
-    free (bf->buffer);
-}
-
 void DC_buf_pool_destroy (DC_buf_pool_t *bp)
 {
     if (bp) {
-        DC_list_destroy (&bp->__buflist, __free_buf);
+        DC_list_destroy (&bp->__buflist);
     }
 }

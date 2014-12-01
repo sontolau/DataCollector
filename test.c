@@ -2,7 +2,6 @@
 #include "link.h"
 #include "list.h"
 #include "dict.h"
-#include "number.h"
 
 struct x {
     int y;
@@ -38,10 +37,10 @@ int main(){
 #endif
     DC_list_t   list;
 
-    DC_list_init (&list, (void*)1,(char*)2,(int*)3,(long*)4,(short*)5, NULL);
+    DC_list_init (&list, NULL, (void*)1,(char*)2,(int*)3,(long*)4,(short*)5, NULL);
     printf ("The count of elements: %d\n", list.count);
 
-    DC_list_add (&list, (void*)8);
+    DC_list_add_object (&list, (void*)8);
     printf ("The count of elements: %d\n", list.count);
 
     void *saveptr = NULL;
@@ -51,7 +50,7 @@ int main(){
         printf ("%d\n", (int)p);
     }
 
-    printf ("The object at index 1 is: %d\n", (int)DC_list_get_object_at_index (&list, 0));
+    printf ("The object at index 0 is: %d\n", (int)DC_list_get_object_at_index (&list, 0));
 
     DC_list_remove_object (&list, 5);
     DC_list_destroy (&list);
@@ -60,7 +59,8 @@ int main(){
         printf ("%d\n", (int)p);
     }
 
-
+    DC_list_destroy (&list);
+/*
     DC_dict_t  mydict;
 
     if (DC_dict_init (&mydict, "name", "sonto", "age", "21", NULL) < 0) {
@@ -74,6 +74,7 @@ int main(){
     printf ("year: %d\n", ((DC_number_t*)DC_dict_get_object_with_key (&mydict, "year"))->int_value);
 
     DC_dict_destroy (&mydict);
+*/
     return 0; 
 
 }

@@ -12,6 +12,13 @@
 #include <stdlib.h>
 #include <string.h>
 
+#ifdef OS_WINDOWS
+#else
+#include <sys/types.h>
+#include <errno.h>
+#include <pthread.h>
+#endif
+
 #ifndef SZ_CLASS_NAME
 #define SZ_CLASS_NAME 50
 #endif
@@ -32,5 +39,8 @@
 #else
 #define DC_INLINE static
 #endif
+
+typedef void* HDC;
+
 
 #endif

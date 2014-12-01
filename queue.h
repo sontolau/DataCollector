@@ -11,6 +11,7 @@ typedef struct _DC_queue {
     unsigned int queue_size;
     unsigned int length;
     qobject_t    zero_type;
+
     qobject_t    *__queue_buffer;
     qobject_t    *__tail_ptr;
     qobject_t    *__head_ptr;

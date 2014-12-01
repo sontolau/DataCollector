@@ -32,6 +32,7 @@ static void *__wait_cb (void *data)
     return NULL;
 }
 
+static void __sig_free (void*);
 HDC DC_signal_alloc ()
 {
     struct _DC_signal *sig;
@@ -54,7 +55,7 @@ HDC DC_signal_alloc ()
         return NULL;
     }
 
-    if (DC_list_init (&sig->__sig_async_func, NULL) < 0) {
+    if (DC_list_init (&sig->__sig_async_func, __sig_free, NULL) < 0) {
         pthread_mutex_destroy (&sig->__sig_mutex);
         pthread_cond_destroy (&sig->__sig_cond);
         free (sig);
@@ -114,7 +115,7 @@ int      DC_signal_wait_asyn (HDC hsig,
         return -1;
     }
 
-    DC_list_add_object (&sig->__sig_async_func, asyn_func);
+    DC_list_insert_object_at_index (&sig->__sig_async_func, asyn_func, 0);
     pthread_mutex_unlock (&sig->__sig_mutex);
     return 0;
 }
@@ -132,14 +133,12 @@ int     DC_signal_send (HDC sig, DC_sig_t s)
     return pthread_cond_broadcast (&((struct _DC_signal*)sig)->__sig_cond);
 }
 
-static int __sig_free (void *obj)
+static void __sig_free (void *obj)
 {
     pthread_t *thrd = (pthread_t*)obj;
     printf ("xxxx %p\n", obj);
     pthread_join (*thrd, NULL);
     free (thrd);
-
-    return 1;
 }
 
 void     DC_signal_free (HDC hsig)
@@ -147,7 +146,7 @@ void     DC_signal_free (HDC hsig)
     struct _DC_signal *sig = (struct _DC_signal*)hsig;
 
     DC_signal_send (sig, __SIG_EXIT);
-    DC_list_loop (&sig->__sig_async_func, __sig_free);
+    //DC_list_loop (&sig->__sig_async_func, __sig_free);
     DC_list_destroy (&sig->__sig_async_func);
     pthread_mutex_destroy (&sig->__sig_mutex);
     pthread_cond_destroy (&sig->__sig_cond);

@@ -2,17 +2,11 @@
 #define _DC_SIGNAL_H
 
 #include "libdc.h"
-#include <pthread.h>
-#include <errno.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
 
 #include "list.h"
 
 typedef int DC_sig_t;
 
-typedef void* HDC;
 
 #ifndef INVALID_SIGNAL
 #define INVALID_SIGNAL   ((DC_sig_t)-1)

@@ -5,17 +5,19 @@
 
 DC_CPP (extern "C" {)
 
+typedef long long DC_key_t;
+
 /*
  * The hash_id_func_t will return an ID for getting 
  * a hash path with the KEY argument.
  */
-typedef unsigned int (*hash_id_func_t) (void *key);
+typedef unsigned int (*hash_id_func_t) (DC_key_t key);
 
 /*
  * The hash comparing function,which will be used for 
  * searching an object you want.
  */
-typedef int (*hash_compare_func_t) (void *obj, void *key);
+typedef int (*hash_compare_func_t) (void *obj, DC_key_t key);
 
 
 /*
@@ -40,11 +42,11 @@ extern int DC_hash_init (DC_hash_t *hash,
                          hash_compare_func_t comp_func,
                          hash_destroy_func_t dest_func);
 
-extern int DC_hash_add_object (DC_hash_t *hash, void *key, void *obj);
+extern int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj);
 
-extern void *DC_hash_get_object (DC_hash_t *hash, void *key);
+extern void *DC_hash_get_object (DC_hash_t *hash, DC_key_t key);
 
-extern void DC_hash_remove_object (DC_hash_t *hash, void *key);
+extern void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key);
 
 extern void DC_hash_destroy (DC_hash_t *hash);
 
