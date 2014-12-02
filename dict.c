@@ -5,7 +5,7 @@
 #include "dict.h"
 
 
-static unsigned int __dict_index_func (void *key) {
+static unsigned int __dict_index_func (DC_key_t key) {
     char *strkey = (char*)key;
     int i;
     unsigned short lo = 1, hi = 0;
@@ -18,7 +18,7 @@ static unsigned int __dict_index_func (void *key) {
     return (unsigned int)(hi<<16 | lo);
 }
 
-static int __dict_compare_func (void *obj, void *key) {
+static int __dict_compare_func (void *obj, DC_key_t key) {
     void **keyobj = (void**)obj;
     char *strkey = (char*)keyobj[0];
 
@@ -79,14 +79,14 @@ int DC_dict_add_object_with_key (DC_dict_t *dic, const char *key, const void *ob
     keyobj[0] = strdup ((char*)key);
     keyobj[1] = (void*)obj;
 
-    return DC_hash_add_object (dic, (char*)key, (void*)keyobj);
+    return DC_hash_add_object (dic, (DC_key_t)key, (void*)keyobj);
 }
 
 void *DC_dict_get_object_with_key (DC_dict_t *dic, const char *key)
 {
     void **keyobj;
 
-    keyobj = DC_hash_get_object (dic, (char*)key);
+    keyobj = DC_hash_get_object (dic, (DC_key_t)key);
     if (keyobj == NULL) {
         return NULL;
     }
@@ -95,7 +95,7 @@ void *DC_dict_get_object_with_key (DC_dict_t *dic, const char *key)
 }
 
 void DC_dict_remove_object_with_key (DC_dict_t *dic, const char *key) {
-    DC_hash_remove_object (dic, (char*)key);
+    DC_hash_remove_object (dic, (DC_key_t)key);
 }
 
 void DC_dict_destroy (DC_dict_t *dic) {

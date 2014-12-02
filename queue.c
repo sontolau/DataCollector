@@ -38,7 +38,6 @@ int DC_queue_is_empty (const DC_queue_t *queue)
 
 int DC_queue_is_full (const DC_queue_t *queue)
 {
-    printf ("%p, %p, %u\n", queue->__tail_ptr, queue->__head_ptr, *queue->__head_ptr);
     return queue->__tail_ptr == queue->__head_ptr &&\
            *queue->__head_ptr != queue->zero_type;
 }
@@ -51,7 +50,7 @@ int DC_queue_push (DC_queue_t *queue, qobject_t obj, int overwrite)
     }
 
     *queue->__head_ptr = obj;
-    queue->__head_ptr  = (queue->__queue_buffer + \
+    queue->__head_ptr  = (qobject_t*)(queue->__queue_buffer + \
                          __get_queue_offset (++queue->__head_ptr, \
                                              queue->__queue_buffer, \
                                              queue->queue_size));
@@ -69,10 +68,10 @@ qobject_t DC_queue_pop (DC_queue_t *queue)
 
     obj = *queue->__tail_ptr;
     *queue->__tail_ptr = queue->zero_type;
-    queue->__tail_ptr  = (qobject_t*)queue->__queue_buffer + \
+    queue->__tail_ptr  = (qobject_t*)(queue->__queue_buffer + \
                          __get_queue_offset (++queue->__tail_ptr, \
                                              queue->__queue_buffer, \
-                                             queue->queue_size);
+                                             queue->queue_size));
     queue->length--;
     return obj;
 }

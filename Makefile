@@ -6,7 +6,7 @@ CFLAGS=-fPIC -Wall -g
 OBJS=link.o list.o hash.o dict.o  queue.o signal.o
 INCDIRS=-I./
 
-all: ${LIB} ${TESTAPP}
+all: ${LIB}
 ${TESTAPP}: ${LIB}
 	gcc test.c -o ${TESTAPP} ${INCDIRS} ${LIB} -g
 ${LIB}:${OBJS}
