@@ -5,6 +5,8 @@
 
 #include "list.h"
 
+DC_CPP (extern "C" {)
+
 typedef int DC_sig_t;
 
 
@@ -30,4 +32,5 @@ extern int     DC_signal_send (HDC sig, DC_sig_t s);
 extern void     DC_signal_free (HDC sig);
 #endif
 
+DC_CPP (})
 #endif

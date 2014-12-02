@@ -199,3 +199,24 @@ void *DC_list_next_object (const DC_list_t *list, void **saveptr)
     cr = (cur?DC_link_container_of (cur, struct list_carrier, link):NULL);
     return cr?cr->obj:NULL;
 }
+
+void **DC_list_to_array (const DC_list_t *list, int *num)
+{
+    void **array = NULL;
+    void *saveptr = NULL;
+    int  i = 0;
+    void *obj = NULL;
+
+    *num = 0;
+    if (list->count) {
+        array = (void**)calloc (list->count, sizeof (void*));
+        if (array) {
+            while ((obj = DC_list_next_object (list, &saveptr))) {
+                array[i++] = obj;
+            }
+        }
+    }
+ 
+    *num = i;
+    return array;
+}

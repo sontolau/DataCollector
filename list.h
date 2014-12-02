@@ -46,9 +46,12 @@ extern void DC_list_remove_object (DC_list_t *list, void *obj);
 
 extern void *DC_list_next_object (const DC_list_t *list, void **saveptr);
 
+extern void **DC_list_to_array (const DC_list_t *list, int *num);
+
 extern void DC_list_loop (const DC_list_t *list, int (*cb)(void*));
 
 extern void DC_list_destroy (DC_list_t *list);
+
 
 DC_CPP(})
 #endif
