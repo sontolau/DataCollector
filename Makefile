@@ -3,7 +3,7 @@ LIB=libDC.a
 CC=cc
 CFLAGS=-fPIC -Wall -g
 
-OBJS=link.o list.o hash.o dict.o  queue.o signal.o
+OBJS=link.o list.o hash.o dict.o  queue.o signal.o buffer.o
 INCDIRS=-I./
 
 all: ${LIB}

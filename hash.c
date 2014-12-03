@@ -160,7 +160,7 @@ void DC_hash_destroy (DC_hash_t *hash) {
     struct hash_carrier *cr;
 
     listmap = (DC_list_t**)hash->__hash_map;
-    for (i=0; i<hash->size; i++) {
+    for (i=0; listmap && i<hash->size; i++) {
         for (j=0; j<hash->size; j++) {
             while (hash->__hash_destroy && (cr = DC_list_next_object (&listmap[i][j], &saveptr))) {
                 hash->__hash_destroy (cr->obj);

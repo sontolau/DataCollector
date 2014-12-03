@@ -78,7 +78,7 @@ qobject_t DC_queue_pop (DC_queue_t *queue)
 
 void DC_queue_destroy (DC_queue_t *queue)
 {
-    if (queue && queue->__queue_buffer) {
+    if (queue->__queue_buffer) {
         free (queue->__queue_buffer);
     }
 }
