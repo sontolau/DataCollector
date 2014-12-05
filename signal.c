@@ -28,7 +28,6 @@ static void *__wait_cb (void *data)
         }
     }
 
-    printf ("%lu exit \n", pthread_self ());
     return NULL;
 }
 
@@ -108,7 +107,6 @@ int      DC_signal_wait_asyn (HDC hsig,
     if (asyn_func == NULL || pthread_mutex_lock (&sig->__sig_mutex) < 0) {
         return -1;
     }
-    printf ("%p\n", asyn_func);
     if (pthread_create (asyn_func, NULL, __wait_cb, hsig) < 0) {
         pthread_mutex_unlock (&sig->__sig_mutex);
         free (asyn_func);
@@ -136,7 +134,6 @@ int     DC_signal_send (HDC sig, DC_sig_t s)
 static void __sig_free (void *obj)
 {
     pthread_t *thrd = (pthread_t*)obj;
-    printf ("xxxx %p\n", obj);
     pthread_join (*thrd, NULL);
     free (thrd);
 }
