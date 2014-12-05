@@ -4,6 +4,8 @@
 #include "link.h"
 
 typedef struct _Buffer {
+    long long    id;
+    int          busy;
     unsigned int size;
     unsigned int length;
     DC_link_t    __link;
@@ -15,7 +17,7 @@ typedef struct _BufferPool {
     int          numbufs;
     unsigned int bufsize;
 
-    DC_buffer_t     *__netbuf;
+    DC_buffer_t     *__bufptr;
     DC_link_t    __free_link;
     DC_link_t    __engaged_link;
 } DC_buffer_pool_t;
@@ -25,6 +27,8 @@ typedef struct _BufferPool {
 extern int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size);
 
 extern DC_buffer_t *DC_buffer_pool_alloc (DC_buffer_pool_t *pool);
+
+extern DC_buffer_t *DC_buffer_pool_get (DC_buffer_pool_t *pool, long long id);
 
 extern void     DC_buffer_pool_free (DC_buffer_pool_t *pool, DC_buffer_t *buf);
 

@@ -62,6 +62,7 @@ typedef struct _NetInfo {
     unsigned int   net_addr;
 } NetInfo_t;
 
+struct _NetPeer;
 typedef struct _NetIO {
     int       sock_fd;
     struct    ev_io io;
@@ -71,16 +72,22 @@ typedef struct _NetIO {
 #define PEER_FLAG_CONN          (1<<1)
     int          flag;
     NetInfo_t net_info;
-    DC_link_t    link;
     void     *userdata;
-}NetIO_t;
-typedef NetIO_t Remote_t;
 
+    DC_link_t    __status_link;
+    DC_link_t    __peer_link;
+}NetIO_t;
+#define NetIOType(io)   (io->net_info.net_type)
 #define NetIOSetStatus(_io, _st)   do { _io->flag &= 0xFFF0; _io->flag |= _st;} while (0)
 #define NetIOGetStatus(io)        (io->flag & 0xFFF0)
 #define NetIOSetUserData(io, data) (io->userdata = data)
 #define NetIOGetUserData(io)       (io->userdata)
 
+typedef struct _NetPeer {
+    long long cid;
+    NetIO_t   *net_io;
+    DC_link_t  io_link;
+} NetPeer_t;
 
 typedef struct _NetBuffer {
     NetIO_t      *net_io;
@@ -126,6 +133,8 @@ typedef struct _Server {
     
     DC_buffer_pool_t net_buffer_pool;
     DC_buffer_pool_t net_io_pool;
+    DC_buffer_pool_t net_peer_pool;
+
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;
     HDC            sig_handle;
@@ -138,11 +147,20 @@ typedef struct _Server {
     pthread_rwlock_t serv_lock;
 } Server_t;
 
-#define GetActiveLink(srv)    ((DC_link_t*)&srv->peer_link[0])
-#define GetInactiveLink(srv)   ((DC_link_t*)&srv->peer_link[1])
+#define NetGetActiveLink(srv)    ((DC_link_t*)&srv->peer_link[0])
+#define NetGetInactiveLink(srv)   ((DC_link_t*)&srv->peer_link[1])
 
 #define ServerSetUserData(srv, data) do{srv->private_data = data;}while(0);
 #define ServerGetUserData(srv)          (srv->private_data)
+
+extern NetIO_t *NetIOAlloc (Server_t *srv);
+extern void NetIOFree (Server_t *srv, NetIO_t *io);
+
+extern NetPeer_t *NetPeerAlloc (Server_t *srv);
+extern void NetPeerFree (Server_t *srv, NetPeer_t *peer);
+
+extern NetBuffer_t *NetBufferAlloc (Server_t *srv);
+extern void NetBufferFree (Server_t *srv, NetBuffer_t *buf);
 
 //extern int AllocNetBuffer (Server_t *srv);
 //extern void FreeNetBuffer (Server_t *srv);
