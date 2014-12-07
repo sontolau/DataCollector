@@ -18,8 +18,8 @@
 #include <libdc/signal.h>
 
 enum {
-    NET_TYPE_TCP = 1,
-    NET_TYPE_UDP = 2,
+    NET_TYPE_TCP = 0,
+    NET_TYPE_UDP = 1,
 };
 
 
@@ -34,10 +34,17 @@ enum {
 typedef enum {
     NET_COM_PING = 1,
     NET_COM_CONN = 2,
-    NET_COM_TRANSACTION,
+    NET_COM_TRANS,
     NET_COM_DISCONN,
 }NetCom_t;
 
+typedef enum {
+    ENET_OK = 0,
+    ENET_PEER_ONLINE,
+    ENET_PEER_OFFLINE,
+    ENET_INVALID_COM,
+    ENET_INVALID_REQUEST,
+} Err_t;
 
 typedef struct _NetHeader {
     unsigned short magic;
@@ -48,6 +55,7 @@ typedef struct _NetHeader {
     unsigned short flag;
     NetCom_t       command;
     unsigned int   cid;
+
     unsigned int   status;
     unsigned int   data_len;
     unsigned char  data[0];
@@ -62,41 +70,52 @@ typedef struct _NetInfo {
     unsigned int   net_addr;
 } NetInfo_t;
 
+typedef struct _NetProtocolHandler {
+    int (*createNetIO) (Server_t *srv, NetInfo_t *info, NetIO_t *io);
+    void (*eventCallBack) (Server_t *srv, NetIO_t *io);
+    void (*closeNetIO) (Server_t *srv, NetIO_t *io);
+}NetProtocolHandler_t;
+
 struct _NetPeer;
 typedef struct _NetIO {
-    int       sock_fd;
-    struct    ev_io io;
-    unsigned int expire_time;
+    int io_fd;
+    struct ev_io io_ev;
+    NetInfo_t    io_net;
+    struct _NetPeer *peer;
+    NetProtocolHandler_t *io_handler;
+} NetIO_t;
+//struct _NetPeer;
+typedef struct _NetPeer {
+    long long peerID;
+    NetIO_t   netio;
     unsigned int trans_time;
 #define PEER_FLAG_WAITING       (1<<0)
 #define PEER_FLAG_CONN          (1<<1)
     int          flag;
-    NetInfo_t net_info;
     void     *userdata;
+    DC_link_t    __link;
+}NetPeer_t;
 
-    DC_link_t    __status_link;
-    DC_link_t    __peer_link;
-}NetIO_t;
-#define NetIOType(io)   (io->net_info.net_type)
-#define NetIOSetStatus(_io, _st)   do { _io->flag &= 0xFFF0; _io->flag |= _st;} while (0)
-#define NetIOGetStatus(io)        (io->flag & 0xFFF0)
-#define NetIOSetUserData(io, data) (io->userdata = data)
-#define NetIOGetUserData(io)       (io->userdata)
-
-typedef struct _NetPeer {
-    long long cid;
-    NetIO_t   *net_io;
-    DC_link_t  io_link;
-} NetPeer_t;
+#define NetPeerType(peer)                (peer->netio.io_net.net_type)
+#define NetPeerSetHandler(peer, handler) (peer->netio.io_handler = handler)
+#define NetPeerHandler(peer)             (peer->netio.io_handler)
+#define NetPeerSetUserData(peer, data)   (peer->userdata = data)
+#define NetPeerGetUserData(peer)         (peer->userdata)
 
 typedef struct _NetBuffer {
-    NetIO_t      *net_io;
+    NetPeer_t      *peer;
     unsigned int buffer_size;
+    unsigned int buffer_length;
     union {
         unsigned char buffer[0];
         NetHeader_t   net_buf;
     };
 } NetBuffer_t;
+
+#define NetBufferType(buf) (buf->net_buf.command)
+#define NetBufferFlag(buf) (buf->net_buf.flag)
+#define NetBufferData(buf) (buf->net_buf.data)
+#define NetBufferDataLength(buf) (buf->net_buf.data_len)
 
 #define NetBufferSetData(_buf, _com, _data, _size) \
     do {\
@@ -107,12 +126,6 @@ typedef struct _NetBuffer {
 
 #define NetBufferGetDataLength(_buf) (_buf->net_buf.data_len)
 #define NetBufferGetDataAddr(_buf)   (_buf->net_buf.data)
-
-typedef enum {
-    NEV_DONOTHING = 1,
-    NEV_REPLY = 2,
-    NEV_CLOSE,
-} NEv_t;
 
 typedef struct _NetConfig {
     char *chdir;
@@ -132,11 +145,11 @@ typedef struct _Server {
     struct ev_loop *ev_loop;
     
     DC_buffer_pool_t net_buffer_pool;
-    DC_buffer_pool_t net_io_pool;
     DC_buffer_pool_t net_peer_pool;
-
+    DC_hash_t      peer_hash_table;
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;
+
     HDC            sig_handle;
     unsigned int   timer;
     NetConfig_t    *config;
@@ -145,16 +158,14 @@ typedef struct _Server {
     DC_link_t      peer_link[2];
     volatile int   exit_flag;
     pthread_rwlock_t serv_lock;
+    NetProtocolHandler *handler_map;
 } Server_t;
 
 #define NetGetActiveLink(srv)    ((DC_link_t*)&srv->peer_link[0])
 #define NetGetInactiveLink(srv)   ((DC_link_t*)&srv->peer_link[1])
 
-#define ServerSetUserData(srv, data) do{srv->private_data = data;}while(0);
-#define ServerGetUserData(srv)          (srv->private_data)
-
-extern NetIO_t *NetIOAlloc (Server_t *srv);
-extern void NetIOFree (Server_t *srv, NetIO_t *io);
+#define NetSetUserData(srv, data) do{srv->private_data = data;}while(0);
+#define NetGetUserData(srv)          (srv->private_data)
 
 extern NetPeer_t *NetPeerAlloc (Server_t *srv);
 extern void NetPeerFree (Server_t *srv, NetPeer_t *peer);
@@ -162,13 +173,16 @@ extern void NetPeerFree (Server_t *srv, NetPeer_t *peer);
 extern NetBuffer_t *NetBufferAlloc (Server_t *srv);
 extern void NetBufferFree (Server_t *srv, NetBuffer_t *buf);
 
-//extern int AllocNetBuffer (Server_t *srv);
-//extern void FreeNetBuffer (Server_t *srv);
 
 typedef struct _NetDelegate {
     void (*getNetInfoWithIndex) (Server_t *srv, NetInfo_t *net, int index);
     void (*timerIsUp) (Server_t *srv, unsigned int timer);
-    int  (*willInitServer) (Server_t *srv);
+    int  (*willInitNet) (Server_t *srv);
+    void (*didInitNet) (Server_t *srv);
+    int  (*peerWillConnect) (Server_t *srv, NetPeer_t *peer);
+    void (*peerWillDisconnect) (Server_t *srv, NetPeer_t *peer);
+    void (*willStopNet) (Server_t *srv);
+/*
     void (*willChangePeerStatus) (Server_t*srv, Remote_t *peer, int from, int to);
     void (*willClosePeer) (Server_t *srv, Remote_t *peer);
 
@@ -178,6 +192,7 @@ typedef struct _NetDelegate {
     void (*didSendReply) (Server_t *srv, NetBuffer_t *buf, int status);
     void (*willRunServer) (Server_t *srv);
     void (*willStopServer) (Server_t *srv);
+*/
 } NetDelegate_t;
 
 extern int ServerRun (Server_t *serv, NetConfig_t *config, NetDelegate_t *delegate);

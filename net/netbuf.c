@@ -33,23 +33,6 @@ void NetPeerFree (Server_t *srv, NetPeer_t *peer)
     BufferFree (srv, peer, srv->net_peer_pool);
 }
 
-NetIO_t *NetIOAlloc (Server_t *srv)
-{
-    NetIO_t *io = NULL;
-
-    BufferAlloc (srv, io, NetIO_t, srv->net_io_pool);
-    if (io) {
-        memset (io, '\0', sizeof (NetIO_t));
-    }
-
-    return io;
-}
-
-void NetIOFree (Server_t *srv, NetIO_t *io)
-{
-    BufferFree (srv, io, srv->net_io_pool);
-}
-
 NetBuffer_t *NetBufferAlloc (Server_t *srv)
 {
     NetBuffer_t *buf = NULL;
