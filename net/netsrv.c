@@ -433,14 +433,14 @@ DC_INLINE void SignalCallBack (struct ev_loop *ev, ev_signal *w, int revents)
     ev_break (ev, EVBREAK_ALL);
 }
 
-DC_INLINE void RunNet (Net_t *serv)
+DC_INLINE int RunNet (Net_t *serv)
 {
     ev_timer  timer;
     ev_signal sig_handler;
 
     if (CreateSocketIO (serv) < 0) {
         fprintf (stderr, "CreateSocketIO failed due to %s\n", strerror (errno));
-        return;
+        return -1;
     }
 
     timer.data = serv;
@@ -458,6 +458,8 @@ DC_INLINE void RunNet (Net_t *serv)
     ev_signal_stop (serv->ev_loop, &sig_handler);
 
     DestroySocketIO (serv);
+
+    return 0;
 }
 
 DC_INLINE void ReleaseNet (Net_t *serv)
@@ -478,13 +480,32 @@ DC_INLINE void ReleaseNet (Net_t *serv)
 int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)
 {
     int ret;
-    
+    pid_t pid;
+
     memset (serv, '\0', sizeof (Net_t));
     serv->config   = config;
     serv->delegate = delegate;
 
+    if (config->chdir && chdir (config->chdir) < 0) {
+        fprintf (stderr, "chdir call failed.\n");
+        return -1;
+    }
+
     if (!(ret = InitNet (serv))) {
-        RunNet (serv);
+        if (config->daemon) {
+       	    pid = fork ();
+
+            if (pid > 0) {
+                ReleaseNet (serv);
+                exit (EXIT_SUCCESS);
+            } else if (pid < 0) {
+                fprintf (stderr, "fork call failed due to %s\n", strerror (errno));
+                ReleaseNet (serv);
+                return -1;
+            }
+        }
+
+        ret = RunNet (serv);
     }
 
     ReleaseNet (serv);
