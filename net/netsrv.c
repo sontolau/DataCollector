@@ -8,6 +8,13 @@
 #define WakeUpRequestProc(serv) WakeUpQueueProc(serv, __SIG_REQUEST)
 #define WakeUpReplyProc(serv)    WakeUpQueueProc(serv, __SIG_REPLY)
 
+extern NetBuffer_t *NetBufferAlloc (Net_t *srv);
+extern void NetBufferFree (Net_t *srv, NetBuffer_t *buf);
+extern NetIO_t     *NetIOAlloc (Net_t *srv);
+extern void NetIOFree (Net_t *srv, NetIO_t *io);
+extern void NetCloseIO (Net_t *srv, NetIO_t *io);
+
+
 DC_INLINE long __recv (int sock, unsigned char *buf, unsigned int size)
 {
     long szread;
@@ -138,6 +145,49 @@ void NetCloseIO (Net_t *srv, NetIO_t *io)
     CloseNetIO (srv, io);
 }
 
+extern NetBuffer_t *NetAllocIOBuffer (Net_t *srv, NetIO_t *io)
+{
+    NetBuffer_t *buf = NULL;
+
+    buf = NetBufferAlloc (srv);
+    if (buf) {
+        buf->__link.next = NULL;
+        buf->__link.prev = NULL;
+ 
+        buf->io          = *io;
+        DC_link_add (io->__buf_link.prev, &buf->__link);
+    }
+
+    return buf;
+}
+
+extern void NetFreeIOBuffer (Net_t *srv, NetBuffer_t *buf)
+{
+    if (buf) {
+        DC_link_remove (&buf->__link);
+        NetBufferFree (srv, buf);
+    }
+}
+
+extern void NetCommitIOBuffer (Net_t *srv, NetIO_t *io)
+{
+    register DC_link_t *linkptr, *tmpptr;
+    NetBuffer_t        *buffer;
+
+    linkptr = io->__buf_link.next;
+    while (linkptr && linkptr != &io->__buf_link) {
+        tmpptr = linkptr->next;
+        DC_link_remove (linkptr);
+
+        buffer = DC_link_container_of (linkptr, NetBuffer_t, __link);
+        PutNetBufferIntoReplyQueue (srv, buffer);
+        linkptr = tmpptr;
+    }
+
+    WakeUpReplyProc (srv);
+}
+
+
 static void RequestQueueProc (DC_sig_t sig, void *data)
 {
     NetBuffer_t  *req_buf = NULL;
@@ -149,14 +199,11 @@ static void RequestQueueProc (DC_sig_t sig, void *data)
             while ((req_buf = GetNetBufferFromRequestQueue (serv))) {
                 //TODO: add code here to process request from remote.
                 if (serv->delegate && serv->delegate->processRequest) {
-                    PutNetBufferIntoReplyQueue (serv, req_buf);
-                    WakeUpReplyProc (serv);
-                } else {
-                    if (req_buf->io->io_net.net_type == NET_TYPE_UDP) {
-                        NetIOFree (serv, req_buf->io);
-                    }
+                    serv->delegate->processRequest (serv, req_buf);
+                    
+                    NetCommitIOBuffer (serv, &req_buf->io);
                     NetBufferFree (serv, req_buf);
-                }
+                }   
             }
         }
             break;
@@ -175,26 +222,29 @@ static void ReplyQueueProc (DC_sig_t sig, void *data)
         case __SIG_REPLY:
         {
             while ((buf = GetNetBufferFromReplyQueue (serv))) {
-                switch (buf->io->io_net.net_type) {
+                switch (buf->io.io_net.net_type) {
                     case NET_TYPE_TCP:
                     {
-                        if (__send (buf->io->io_fd, buf->buffer, buf->buffer_length) <= 0) {
-                            CloseNetIO (serv, buf->io);
-                            NetIOFree (serv, buf->io);
+                        if (__send (buf->io.io_fd, buf->buffer, buf->buffer_length) <= 0) {
+                            CloseNetIO (serv, buf->netio);
+                            NetIOFree (serv, buf->netio);
                         }
                     }
                         break;
                     case NET_TYPE_UDP:
                     {
-                        addr.sin_family = AF_INET;
-                        addr.sin_port   = htons(buf->io->io_net.net_port);
-                        addr.sin_addr.s_addr = buf->io->io_net.net_addr;
+                        addr.sin_family      = AF_INET;
+                        addr.sin_port        = htons(buf->io.io_net.net_port);
+                        addr.sin_addr.s_addr = buf->io.io_net.net_addr;
 
-                        if (__sendto (buf->io->io_fd, buf->buffer, buf->buffer_length, 
-                                      (struct sockaddr*)&addr, sizeof (addr)) < 0) {
+                        if (__sendto (buf->io.io_fd, 
+                                      buf->buffer, 
+                                      buf->buffer_length, 
+                                      (struct sockaddr*)&addr, 
+                                      sizeof (addr)) < 0) {
                             //TODO: process exception.
+                            CloseNetIO (serv, buf->netio);
                         }
-                        NetIOFree (serv, buf->io);
                     }
                         break;
                     default:
@@ -213,24 +263,27 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
-    NetIO_t *reqio = NULL;
     NetBuffer_t *buffer = NULL;
     struct sockaddr_in remote;
-    socklen_t          sklen = sizeof (remote);
+    socklen_t     sklen = sizeof (struct sockaddr);
 
     buffer = NetBufferAlloc (srv);
     if (buffer == NULL) {
         //TODO: process exception.
         return;
     } else {
-        buffer->buffer_size = srv->config->buffer_size;
-        buffer->io          = io;
+        buffer->buffer_size   = srv->config->buffer_size;
         buffer->buffer_length = 0;
+        buffer->io.io_fd      = io->io_fd;
+        buffer->io.io_net     = io->io_net;
+        buffer->netio         = io;
 
         switch (io->io_net.net_type) {
             case NET_TYPE_TCP:
             {
-                buffer->buffer_length = __recv (io->io_fd, buffer->buffer, buffer->buffer_size);
+                buffer->buffer_length = __recv (io->io_fd, 
+                                                buffer->buffer, 
+                                                buffer->buffer_size);
                 if (buffer->buffer_length <= 0) {
                     //TODO: process exception.
                     NetBufferFree (srv, buffer);
@@ -240,24 +293,19 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
             }
             case NET_TYPE_UDP:
             {
-                reqio = NetIOAlloc (srv);
-                if (reqio == NULL) {
-                    //TODO: process exception.
-                    NetBufferFree (srv, buffer);
-                    return;
-                } else {
-                    reqio->io_fd = io->io_fd;
-                    reqio->io_net.net_type = NET_TYPE_UDP;
-                    buffer->io   = reqio;
-                }
-
-                buffer->buffer_length = __recvfrom (reqio->io_fd, buffer->buffer, 
-                                                    buffer->buffer_size, (struct sockaddr*)&remote, &sklen);
+                buffer->buffer_length = __recvfrom (io->io_fd, 
+                                                    buffer->buffer, 
+                                                    buffer->buffer_size, 
+                                                    (struct sockaddr*)&remote, 
+                                                    &sklen);
                 if (buffer->buffer_length < 0) {
                     //TODO: process exception.
-                    NetIOFree (srv, reqio);
                     NetBufferFree (srv, buffer);
+                    CloseNetIO (srv, io);
                     return;
+                } else {
+                    buffer->io.io_net.net_addr = remote.sin_addr.s_addr;
+                    buffer->io.io_net.net_port = ntohs (remote.sin_port);
                 }
             }
             default:
@@ -282,6 +330,8 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
         close (accept (io->io_fd, NULL, NULL));
         return;
     } else {
+        newio->__buf_link.prev = &newio->__buf_link;
+        newio->__buf_link.next = &newio->__buf_link;
         newio->io_fd = accept (io->io_fd, (struct sockaddr*)&caddr, &sklen);
         if (newio->io_fd < 0) {
             //TODO: process exception.
@@ -451,8 +501,15 @@ DC_INLINE int RunNet (Net_t *serv)
     ev_signal_init (&sig_handler, SignalCallBack, SIGINT);
     ev_signal_start(serv->ev_loop, &sig_handler);
 
-    
+    if (serv->delegate && serv->delegate->willRunNet) {
+        serv->delegate->willRunNet (serv);
+    }
+
     ev_loop (serv->ev_loop, 0);
+
+    if (serv->delegate && serv->delegate->willStopNet) {
+        serv->delegate->willStopNet (serv);
+    }
 
     ev_timer_stop (serv->ev_loop, &timer);
     ev_signal_stop (serv->ev_loop, &sig_handler);
@@ -464,10 +521,6 @@ DC_INLINE int RunNet (Net_t *serv)
 
 DC_INLINE void ReleaseNet (Net_t *serv)
 {
-    if (serv->delegate && serv->delegate->willStopNet) {
-        serv->delegate->willStopNet (serv);
-    }
-
     ev_loop_destroy (serv->ev_loop);
     DC_signal_free (serv->sig_handle);
     DC_queue_destroy (&serv->request_queue);
@@ -482,7 +535,6 @@ int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)
     int ret;
     pid_t pid;
 
-    memset (serv, '\0', sizeof (Net_t));
     serv->config   = config;
     serv->delegate = delegate;
 

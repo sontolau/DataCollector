@@ -3,6 +3,7 @@
 
 #include <libdc/libdc.h>
 #include "netsrv.h"
+#include <libdc/buffer.h>
 
 DC_CPP (extern "C" {)
 
@@ -39,6 +40,11 @@ NetBuffer_t *NetBufferAlloc (Net_t *srv)
     NetBuffer_t *buf = NULL;
 
     BufferAlloc (srv, buf, NetBuffer_t, srv->net_buffer_pool);
+    if (srv->delegate->resourceUsage) {
+        srv->delegate->resourceUsage (srv, 
+                                      RES_BUFFER, 
+                                      DC_buffer_pool_get_usage (&srv->net_buffer_pool));
+    }
 
     return buf;
 }
@@ -46,6 +52,11 @@ NetBuffer_t *NetBufferAlloc (Net_t *srv)
 void NetBufferFree (Net_t *srv, NetBuffer_t *buf)
 {
     BufferFree (srv, buf, srv->net_buffer_pool);
+    if (srv->delegate->resourceUsage) {
+        srv->delegate->resourceUsage (srv, 
+                                      RES_BUFFER, 
+                                      DC_buffer_pool_get_usage (&srv->net_buffer_pool));
+    }
 }
 
 NetIO_t *NetIOAlloc (Net_t *srv)
@@ -53,13 +64,22 @@ NetIO_t *NetIOAlloc (Net_t *srv)
     NetIO_t *iobuf = NULL;
 
     BufferAlloc (srv, iobuf, NetIO_t, srv->net_io_pool);
-   
+    if (srv->delegate->resourceUsage) {
+        srv->delegate->resourceUsage (srv, 
+                                      RES_IO, 
+                                      DC_buffer_pool_get_usage (&srv->net_io_pool));
+    }
     return iobuf;
 }
 
 void NetIOFree (Net_t *srv, NetIO_t *io)
 {
     BufferFree (srv, io, srv->net_io_pool);
+    if (srv->delegate->resourceUsage) {
+        srv->delegate->resourceUsage (srv, 
+                                      RES_BUFFER, 
+                                      DC_buffer_pool_get_usage (&srv->net_io_pool));
+    }
 }
 
 

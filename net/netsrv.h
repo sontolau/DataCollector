@@ -42,13 +42,16 @@ typedef struct _NetIO {
     int io_fd;
     struct ev_io io_ev;
     NetInfo_t    io_net;
+    DC_link_t    __buf_link;
 } NetIO_t;
 
 
 typedef struct _NetBuffer {
-    NetIO_t      *io;
+    NetIO_t      io;
+    NetIO_t      *netio;
     unsigned int buffer_size;
     unsigned int buffer_length;
+    DC_link_t    __link;
     union {
         unsigned char buffer[0];
     };
@@ -88,20 +91,24 @@ typedef struct _Net {
 #define NetSetUserData(srv, data) do{srv->private_data = data;}while(0);
 #define NetGetUserData(srv)          (srv->private_data)
 
+extern NetBuffer_t *NetAllocIOBuffer (Net_t *srv, NetIO_t *io);
+extern void NetFreeIOBuffer (Net_t *srv, NetBuffer_t *buf);
+extern void NetCommitIOBuffer (Net_t *srv, NetIO_t *io);
 
-extern NetBuffer_t *NetBufferAlloc (Net_t *srv);
-extern void NetBufferFree (Net_t *srv, NetBuffer_t *buf);
-extern NetIO_t     *NetIOAlloc (Net_t *srv);
-extern void NetIOFree (Net_t *srv, NetIO_t *io);
-extern void NetCloseIO (Net_t *srv, NetIO_t *io);
+enum {
+    RES_IO    = 1,
+    RES_BUFFER = 2,
+};
 
 typedef struct _NetDelegate {
     void (*getNetInfoWithIndex) (Net_t *srv, NetInfo_t *net, int index);
-    void (*timerout) (Net_t *srv, unsigned int timer);
+    int (*timerout) (Net_t *srv, unsigned int timer);
     int  (*willInitNet) (Net_t *srv);
+    void (*willRunNet) (Net_t *srv);
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
-    int  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
+    void  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);
+    void (*resourceUsage) (Net_t *srv, int type, float percent);
 } NetDelegate_t;
 
 extern int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate);
