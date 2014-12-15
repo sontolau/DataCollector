@@ -1,25 +1,17 @@
-#ifndef _PMS_SERVMASTER_H
-#define _PMS_SERVMASTER_H
+#ifndef _PNET_H
+#define _PNET_H
 #include <unistd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/types.h>
 #include <sys/socket.h>
-#include <fcntl.h>
-#include <arpa/inet.h>
-#include <netinet/in.h>
-
-
+#include <sys/un.h>
+#include <net/if.h>
 #include <ev.h>
-#include <libdc/libdc.h>
 #include <libdc/buffer.h>
 #include <libdc/queue.h>
 #include <libdc/signal.h>
 
 enum {
-    NET_TYPE_TCP = 0,
-    NET_TYPE_UDP = 1,
+    NET_TCP = 0,
+    NET_UDP = 1,
 };
 
 
@@ -34,7 +26,13 @@ enum {
 typedef struct _NetInfo {
     int net_type;
     unsigned short net_port;
-    unsigned int   net_addr;
+    union {
+        unsigned int   net_ip;
+#ifndef UNIX_PATH_MAX
+#define UNIX_PATH_MAX 108
+#endif
+        char           net_path[UNIX_PATH_MAX];
+    };
 } NetInfo_t;
 
 

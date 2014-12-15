@@ -3,7 +3,7 @@ OBJS=netsrv.o netcomm.o
 CFLAGS=-Wall -fPIC -g
 CC=gcc
 LIBS=-lpthread -lDC -lev
-INCDIRS=-L/usr/include/libdc -I./
+INCDIRS=-I/usr/include/libev
 
 ${LIB}:${OBJS}
 	${CC} -shared ${OBJS} -o ${LIB} ${CFLAGS} ${LIBS}

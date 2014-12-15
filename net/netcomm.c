@@ -4,6 +4,7 @@
 #include <libdc/libdc.h>
 #include "netsrv.h"
 #include <libdc/buffer.h>
+#include <fcntl.h>
 
 DC_CPP (extern "C" {)
 

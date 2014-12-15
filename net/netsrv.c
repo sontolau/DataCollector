@@ -1,4 +1,15 @@
+#include <unistd.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/types.h>
+#include <sys/socket.h>
+#include <fcntl.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/un.h>
 #include "netsrv.h"
+#include <ev.h>
 
 #define __SIG__   (10)
 #define __SIG_REQUEST (__SIG__ + 1)
@@ -81,6 +92,28 @@ DC_INLINE long __sendto (int sock, unsigned char *buf, unsigned int size,
     return szwrite;
 }
 
+DC_INLINE void __net2addr (NetInfo_t *net, struct sockaddr *addr)
+{
+    if (net->net_port == 0) {
+        ((struct sockaddr_un*)addr)->sun_family = AF_UNIX;
+        strncpy (((struct sockaddr_un*)addr)->sun_path, net->net_path, UNIX_PATH_MAX-1);
+    } else {
+        ((struct sockaddr_in*)addr)->sin_family = AF_INET;
+        ((struct sockaddr_in*)addr)->sin_port   = htons (net->net_port);
+        ((struct sockaddr_in*)addr)->sin_addr.s_addr = net->net_ip;
+    }
+}
+
+DC_INLINE void __addr2net (struct sockaddr *addr, NetInfo_t *net)
+{
+    if (((struct sockaddr_in*)addr)->sin_family == AF_INET) {
+        net->net_port = ntohs (((struct sockaddr_in*)addr)->sin_port);
+        net->net_ip   = ((struct sockaddr_in*)addr)->sin_addr.s_addr;
+    } else if (((struct sockaddr_un*)addr)->sun_family == AF_UNIX) {
+        net->net_port  = 0;
+        strncpy (net->net_path, ((struct sockaddr_un*)addr)->sun_path, UNIX_PATH_MAX-1);
+    }
+}
 
 DC_INLINE void SetNonblockFD (int fd)
 {
@@ -216,14 +249,14 @@ static void ReplyQueueProc (DC_sig_t sig, void *data)
 {
     NetBuffer_t  *buf = NULL;
     Net_t  *serv = (Net_t*)data;
-    struct sockaddr_in addr;
+    struct sockaddr addr;
 
     switch (sig) {
         case __SIG_REPLY:
         {
             while ((buf = GetNetBufferFromReplyQueue (serv))) {
                 switch (buf->io.io_net.net_type) {
-                    case NET_TYPE_TCP:
+                    case NET_TCP:
                     {
                         if (__send (buf->io.io_fd, buf->buffer, buf->buffer_length) <= 0) {
                             CloseNetIO (serv, buf->netio);
@@ -231,16 +264,13 @@ static void ReplyQueueProc (DC_sig_t sig, void *data)
                         }
                     }
                         break;
-                    case NET_TYPE_UDP:
+                    case NET_UDP:
                     {
-                        addr.sin_family      = AF_INET;
-                        addr.sin_port        = htons(buf->io.io_net.net_port);
-                        addr.sin_addr.s_addr = buf->io.io_net.net_addr;
-
+                        __net2addr (&buf->io.io_net, &addr);
                         if (__sendto (buf->io.io_fd, 
                                       buf->buffer, 
                                       buf->buffer_length, 
-                                      (struct sockaddr*)&addr, 
+                                      &addr, 
                                       sizeof (addr)) < 0) {
                             //TODO: process exception.
                             CloseNetIO (serv, buf->netio);
@@ -264,7 +294,7 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
     NetBuffer_t *buffer = NULL;
-    struct sockaddr_in remote;
+    struct sockaddr remote;
     socklen_t     sklen = sizeof (struct sockaddr);
 
     buffer = NetBufferAlloc (srv);
@@ -279,7 +309,7 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         buffer->netio         = io;
 
         switch (io->io_net.net_type) {
-            case NET_TYPE_TCP:
+            case NET_TCP:
             {
                 buffer->buffer_length = __recv (io->io_fd, 
                                                 buffer->buffer, 
@@ -291,7 +321,7 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
                     return;
                 }
             }
-            case NET_TYPE_UDP:
+            case NET_UDP:
             {
                 buffer->buffer_length = __recvfrom (io->io_fd, 
                                                     buffer->buffer, 
@@ -304,8 +334,8 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
                     CloseNetIO (srv, io);
                     return;
                 } else {
-                    buffer->io.io_net.net_addr = remote.sin_addr.s_addr;
-                    buffer->io.io_net.net_port = ntohs (remote.sin_port);
+                    buffer->io.io_net.net_type = NET_UDP;
+                    __addr2net (&remote, &buffer->io.io_net);
                 }
             }
             default:
@@ -322,7 +352,7 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
-    struct sockaddr_in caddr;
+    struct sockaddr caddr;
     socklen_t sklen = sizeof (caddr);
 
     NetIO_t *newio = NetIOAlloc (srv);
@@ -339,8 +369,7 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
             return;
         } else {
             newio->io_net.net_type = io->io_net.net_type;
-            newio->io_net.net_port = ntohs (caddr.sin_port);
-            newio->io_net.net_addr = caddr.sin_addr.s_addr;
+            __addr2net (&caddr, &newio->io_net);
             ev_io_init (&newio->io_ev, NetIOReadCallBack, newio->io_fd, EV_READ);
             ev_io_start (srv->ev_loop, &newio->io_ev);
         }
@@ -351,7 +380,8 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 {
     int i;
     NetIO_t *io;
-    struct sockaddr_in addrinfo;
+    struct sockaddr    addrinfo;
+
     int flag = 1;
 
     serv->net_io = (NetIO_t*)calloc (serv->config->num_net_io, sizeof (NetIO_t));
@@ -365,37 +395,30 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
         io = &serv->net_io[i];
 
         serv->delegate->getNetInfoWithIndex (serv, &io->io_net, i);
-
-        addrinfo.sin_family = AF_INET;
-        addrinfo.sin_port   = htons (io->io_net.net_port);
-        addrinfo.sin_addr.s_addr = io->io_net.net_addr;
-
-        if (io->io_net.net_type == NET_TYPE_TCP) {
-            io->io_fd = socket (AF_INET, SOCK_STREAM, 0);
-            if (io->io_fd < 0) {
-                return -1;
-            }
-
-            setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-            SetNonblockFD (io->io_fd);
-            if (bind (io->io_fd, (struct sockaddr*)&addrinfo, sizeof (addrinfo)) < 0 ||
-                listen (io->io_fd, 1000) < 0) {
-                return -1;
-            }
-
-            ev_io_init (&io->io_ev, NetIOAcceptCallBack, io->io_fd, EV_READ);
-        } else if (io->io_net.net_type == NET_TYPE_UDP ){
-            io->io_fd = socket (AF_INET, SOCK_DGRAM, 0);
-            if (io->io_fd < 0) {
-                return -1;
-            }
-            setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-            SetNonblockFD (io->io_fd);
-            if (bind (io->io_fd, (struct sockaddr*)&addrinfo, sizeof (addrinfo)) < 0) {
-                return -1;
-            }
-            ev_io_init (&io->io_ev, NetIOReadCallBack, io->io_fd, EV_READ);
+        if (io->io_net.net_type != NET_TCP &&
+            io->io_net.net_type != NET_UDP) {
+            return -1;
         }
+
+       __net2addr (&io->io_net, &addrinfo);
+
+        io->io_fd = socket ((io->io_net.net_port == 0?AF_UNIX:AF_INET),
+                            (io->io_net.net_type == NET_TCP?SOCK_STREAM:SOCK_DGRAM),
+                            0);
+        if (io->io_fd < 0) {
+            return -1;
+        }
+
+        setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
+        SetNonblockFD (io->io_fd);
+        if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0 || 
+            (io->io_net.net_type == NET_TCP && listen (io->io_fd, 1000) < 0 )) {
+            close (io->io_fd);
+            return -1;
+        }
+        ev_io_init (&io->io_ev, 
+                    (io->io_net.net_type == NET_TCP?NetIOAcceptCallBack:NetIOReadCallBack), 
+                    io->io_fd, EV_READ);
         ev_io_start(serv->ev_loop, &io->io_ev);
         io->io_ev.data = io;
     }
@@ -482,6 +505,8 @@ DC_INLINE void SignalCallBack (struct ev_loop *ev, ev_signal *w, int revents)
 {
     ev_break (ev, EVBREAK_ALL);
 }
+
+#include <signal.h>
 
 DC_INLINE int RunNet (Net_t *serv)
 {
