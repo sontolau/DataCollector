@@ -52,7 +52,7 @@ typedef struct _NetIO {
 
 typedef struct _NetBuffer {
     NetIO_t      io;
-    NetIO_t      *ev_io;
+    NetIO_t      *netio;
     unsigned int buffer_size;
     unsigned int buffer_length;
     DC_link_t    __link;
@@ -61,13 +61,13 @@ typedef struct _NetBuffer {
     };
 } NetBuffer_t;
 
-struct _Net;
+
 typedef struct _NetIOHandler {
-    int (*netCreateIO) (struct _Net*, NetIO_t*,  const NetInfo_t*);
-    int (*netAcceptRemoteIO) (struct _Net*, NetIO_t*,  const NetIO_t*);
-    double (*netReadFromIO) (struct _Net*, NetIO_t*, NetBuffer_t*);
-    double (*netWriteToIO) (struct _Net*, const NetIO_t*, NetBuffer_t*);
-    void (*netDestroyIO) (struct _Net*, NetIO_t*);
+    int (*netCreateNetIO) (Net_t*, NetIO_t*,  const NetInfo_t*);
+    int (*netInitNewNetIOFrom) (Net_t*, NetIO_t*,  const NetIO_t*);
+    int (*netReadFromIO) (Net_t*, NetIO_t*, NetBuffer_t*);
+    int (*netWriteToIO) (Net_t*, NetIO_t*, NetBuffer_t*);
+    void (*netDestroyNetIO) (Net_t*, NetIO_t*);
 }NetIOHandler_t;
 
 

@@ -25,25 +25,36 @@ extern NetIO_t     *NetIOAlloc (Net_t *srv);
 extern void NetIOFree (Net_t *srv, NetIO_t *io);
 extern void NetCloseIO (Net_t *srv, NetIO_t *io);
 
-#include "nettcp.c"
-#include "netudp.c"
 
 static NetIOHandler_t NetProtocolHandler[] = {
     [NET_TCP] = {
-        .netCreateIO          = tcpCreateIO,
+        .netCreateIO                 = tcpCreateIO,
         .netAcceptRemoteIO    = tcpAcceptRemoteIO,
-        .netReadFromIO        = tcpReadFromIO,
-        .netWriteToIO         = tcpWriteToIO,
-        .netDestroyIO         = tcpDestroyIO,
+        .netReadFromIO            = tcpReadFrom,
+        .netWriteToIO               = tcpWriteTo,
+        .netDestroyIO               = tcpDestroyIO,
     },
     [NET_UDP] = {
-        .netCreateIO          = udpCreateIO,
+        .netCreateIO                 = udpCreateIO,
         .netAcceptRemoteIO    = NULL,
-        .netReadFromIO        = udpReadFromIO,
-        .netWriteToIO         = udpWriteToIO,
-        .netDestroyIO         = udpDestroyIO,
+        .netReadFromIO            = udpReadFromIO,
+        .netWriteToIO               = udpWriteToIO,
+        .netDestroyIO               = udpDestroyIO,
     }
 };
+
+DC_INLINE void SetNonblockFD (int fd)
+{
+    int flag = 0;
+
+    if ((flag = fcntl (fd, F_GETFL)) < 0) {
+        return;
+    }
+
+    flag |= O_NONBLOCK;
+
+    fcntl (fd, F_SETFL, &flag);
+}
 
 DC_INLINE int PutNetBufferIntoQueue (Net_t *serv, NetBuffer_t *buf, DC_queue_t *queue)
 {
@@ -77,6 +88,23 @@ DC_INLINE NetBuffer_t *GetNetBufferFromQueue (Net_t *serv, DC_queue_t *queue)
 
 #define GetNetBufferFromReplyQueue(serv) \
     GetNetBufferFromQueue(serv, ((DC_queue_t*)&serv->reply_queue))
+
+DC_INLINE void CloseNetIO (Net_t *srv, NetIO_t *io)
+{
+    if (srv->delegate && srv->delegate->willCloseNetIO) {
+        srv->delegate->willCloseNetIO (srv, io);
+    }
+
+    pthread_rwlock_wrlock (&srv->serv_lock);
+    close (io->io_fd);
+    ev_io_stop (srv->ev_loop, &io->io_ev);
+    pthread_rwlock_unlock (&srv->serv_lock);
+}
+
+void NetCloseIO (Net_t *srv, NetIO_t *io)
+{
+    CloseNetIO (srv, io);
+}
 
 NetBuffer_t *NetAllocIOBuffer (Net_t *srv, NetIO_t *io)
 {
@@ -146,16 +174,44 @@ static inline void NetProcessRequest (Net_t *serv)
 static inline void NetProcessReply (Net_t *serv)
 {
     NetBuffer_t *buf;
+    struct sockaddr addr;
 
     while ((buf = GetNetBufferFromReplyQueue (serv))) {
         if (buf->io.__handler->netWriteToIO (serv, &buf->io, buf) <= 0) {
-            buf->io.__handler->netDestroyIO (serv, &buf->io);
-            ev_io_stop (serv->ev_loop, &buf->ev_io->io_ev);
+            close (buf->io.io_fd);
+            ev_io_stop (serv->ev_loop, buf->ev_io);
             if (buf->io.__handler->netAcceptRemoteIO) {
-                NetIOFree (serv, buf->ev_io);
+                NetFreeIO (serv, buf->ev_io);
             }
         }
         NetBufferFree (serv, buf);
+/*
+        switch (buf->io.io_net.net_type) {
+            case NET_TCP:
+            {
+                if (__send (buf->io.io_fd, buf->buffer, buf->buffer_length) <= 0) {
+                    CloseNetIO (serv, buf->netio);
+                    NetIOFree (serv, buf->netio);
+                }
+            }
+            break;
+            case NET_UDP:
+            {
+                __net2addr (&buf->io.io_net, &addr);
+                if (__sendto (buf->io.io_fd,
+                              buf->buffer, 
+                              buf->buffer_length,
+                              &addr, 
+                              sizeof (addr)) < 0) {
+                         CloseNetIO (serv, buf->netio);
+                }
+            }
+            break;
+            default:
+            break;
+        }
+        NetBufferFree (serv, buf);
+*/
     }
 }
 
@@ -183,6 +239,8 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
     NetBuffer_t *buffer = NULL;
+    //struct sockaddr remote;
+    //socklen_t     sklen = sizeof (struct sockaddr);
 
     buffer = NetBufferAlloc (srv);
     if (buffer == NULL) {
@@ -191,13 +249,18 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     } else {
         buffer->buffer_size   = srv->config->buffer_size;
         buffer->buffer_length = 0;
-        buffer->io            = *io;
+        buffer->io               = *io;
         buffer->ev_io         = io;
-
-        if ((buffer->buffer_length = io->__handler->netReadFromIO (srv, io, buffer)) <= 0) {
+/*
+        buffer->io.io_fd      = io->io_fd;
+        buffer->io.io_net     = io->io_net;
+        buffer->netio         = io;
+*/
+        if (io->__handler->netReadFromIO (srv, io, buffer) <= 0) {
             NetBufferFree (srv, buffer);
             io->__handler->netDestroyIO (srv, io);
-            ev_io_stop (srv->ev_loop, w);
+            close (io->io_fd);
+            ev_io_stop (srv->ev_loop, io);
             if (io->__handler->netAcceptRemoteIO) {
                 NetIOFree (srv, io);
             }
@@ -207,6 +270,42 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
             PutNetBufferIntoRequestQueue (srv, buffer);
             WakeUpRequestProc (srv);
         }
+/*
+        switch (io->io_net.net_type) {
+            case NET_TCP:
+            {
+                buffer->buffer_length = __recv (io->io_fd, 
+                                                buffer->buffer, 
+                                                buffer->buffer_size);
+                if (buffer->buffer_length <= 0) {
+                    //TODO: process exception.
+                    NetBufferFree (srv, buffer);
+                    CloseNetIO (srv, io);
+                    return;
+                }
+            }
+            case NET_UDP:
+            {
+                buffer->buffer_length = __recvfrom (io->io_fd, 
+                                                    buffer->buffer, 
+                                                    buffer->buffer_size, 
+                                                    (struct sockaddr*)&remote, 
+                                                    &sklen);
+                if (buffer->buffer_length < 0) {
+                    //TODO: process exception.
+                    NetBufferFree (srv, buffer);
+                    CloseNetIO (srv, io);
+                    return;
+                } else {
+                    buffer->io.io_net.net_type = NET_UDP;
+                    __addr2net (&remote, &buffer->io.io_net);
+                }
+            }
+            default:
+                return;
+                break;
+        }
+*/
     }
 }
 
@@ -214,6 +313,8 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
+    //struct sockaddr caddr;
+    //socklen_t sklen = sizeof (caddr);
 
     NetIO_t *newio = NetIOAlloc (srv);
     if (newio == NULL) {
@@ -223,14 +324,29 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
         memset (newio, '\0', sizeof (NetIO_t));
         if (io->__handler->netAcceptRemoteIO (srv, newio, io) < 0) {
             //TODO: process exception.
-            io->__handler->netDestroyIO (srv, io);
             NetIOFree (srv, newio);
             return;
         } else {
-            *newio = *io;
+            newio->io_net.net_type = io->io_net.net_type;
+            newio->__handler            = io->__handler;
             ev_io_init (&newio->io_ev, NetIOReadCallBack, newio->io_fd, EV_READ);
             ev_io_start (srv->ev_loop, &newio->io_ev);
         }
+/*
+        newio->__buf_link.prev = &newio->__buf_link;
+        newio->__buf_link.next = &newio->__buf_link;
+        newio->io_fd = accept (io->io_fd, (struct sockaddr*)&caddr, &sklen);
+        if (newio->io_fd < 0) {
+            //TODO: process exception.
+            NetIOFree (srv, newio);
+            return;
+        } else {
+            newio->io_net.net_type = io->io_net.net_type;
+            __addr2net (&caddr, &newio->io_net);
+            ev_io_init (&newio->io_ev, NetIOReadCallBack, newio->io_fd, EV_READ);
+            ev_io_start (srv->ev_loop, &newio->io_ev);
+        }
+*/
     }
 }
 
@@ -238,6 +354,8 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 {
     int i;
     NetIO_t *io;
+    struct sockaddr    addrinfo;
+    int flag;
 
     serv->net_io = (NetIO_t*)calloc (serv->config->num_net_io, sizeof (NetIO_t));
     if (serv->net_io == NULL) {
@@ -251,8 +369,8 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 
         serv->delegate->getNetInfoWithIndex (serv, &io->io_net, i);
         io->__handler = &NetProtocolHandler[io->io_net.net_type];
-        if (io->__handler->netCreateIO (serv, io, &io->io_net) < 0) {
-            return -1;
+        if ((flag = io->__handler->netCreateNetIO (serv, io)) < 0) {
+
         } else {
             if (io->__handler->netAcceptRemoteIO) {
                 ev_io_init (&io->io_ev, NetIOAcceptCallBack, io->io_fd, EV_READ);
@@ -262,6 +380,34 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
             ev_io_start (serv->ev_loop, &io->io_ev);
             io->io_ev.data = io;
         }
+/*        if (io->io_net.net_type != NET_TCP &&
+            io->io_net.net_type != NET_UDP) {
+            return -1;
+        }
+
+       __net2addr (&io->io_net, &addrinfo);
+
+        io->io_fd = socket ((io->io_net.net_port == 0?AF_UNIX:AF_INET),
+                            (io->io_net.net_type == NET_TCP?SOCK_STREAM:SOCK_DGRAM),
+                            0);
+        if (io->io_fd < 0) {
+            return -1;
+        }
+
+        setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
+        SetNonblockFD (io->io_fd);
+        if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0 || 
+            (io->io_net.net_type == NET_TCP && listen (io->io_fd, 1000) < 0 )) {
+            close (io->io_fd);
+            return -1;
+        }
+
+        ev_io_init (&io->io_ev, 
+                         (io->io_net.net_type == NET_TCP?NetIOAcceptCallBack:NetIOReadCallBack), 
+                         io->io_fd, EV_READ);
+        ev_io_start(serv->ev_loop, &io->io_ev);
+        io->io_ev.data = io;
+*/
     }
 
     return 0;
@@ -273,8 +419,8 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
 
     for (i=0; i<serv->config->num_net_io &&
                 serv->net_io; i++) {
-        serv->net_io[i].__handler->netDestroyIO (serv, &serv->net_io[i]);
         ev_io_stop (serv->ev_loop, &serv->net_io[i].io_ev);
+        close (serv->net_io[i].io_fd);
     }
 
     if (serv->net_io) free (serv->net_io);
