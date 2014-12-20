@@ -1,6 +1,6 @@
 #include "netutil.c"
 
-static int udpCreateIO (struct _Net *net, NetIO_t *io, const NetInfo_t *info)
+static int udpCreateIO (NetIO_t *io, const NetInfo_t *info)
 {
     int flag = 1;
     struct sockaddr  addrinfo;
@@ -12,45 +12,40 @@ static int udpCreateIO (struct _Net *net, NetIO_t *io, const NetInfo_t *info)
         return -1;
     }
 
-    setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-    __set_nonblock (io->io_fd);
-    if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0) {
-        close (io->io_fd);
-        return -1;
+    if (info->net_flag & NET_IO_BIND) {
+        setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
+        __set_nonblock (io->io_fd);
+        if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0) {
+            close (io->io_fd);
+            return -1;
+        }
     }
     return 0;
 }
 
-static double udpReadFromIO (struct _Net *net, NetIO_t *io, NetBuffer_t *buffer)
+static double udpReadFromIO (NetIO_t *io, unsigned char *bytes, unsigned int szbuf)
 {
     struct sockaddr addr;
     socklen_t       sklen = sizeof (addr);
+    double szread = 0;
 
-    buffer->buffer_length = __recvfrom (io->io_fd, 
-                                        buffer->buffer, 
-                                        buffer->buffer_size,
-                                        &addr,
-                                        &sklen);
-    if (buffer->buffer_length > 0) {
+    szread = __recvfrom (io->io_fd, bytes, szbuf,&addr, &sklen);
+    if (szread > 0) {
         __addr2net (&addr, &io->io_net);
     }
 
-    return buffer->buffer_length;
+    return szread;
 }
 
-double udpWriteToIO (struct _Net *net, const NetIO_t *io, NetBuffer_t *buffer)
+double udpWriteToIO (const NetIO_t *io, const unsigned char *bytes, unsigned int length)
 {
     struct sockaddr addr;
 
-    buffer->buffer_length = __sendto (io->io_fd, 
-                                      buffer->buffer, 
-                                      buffer->buffer_length,
-                                      &addr,
-                                      sizeof (addr));
-    return buffer->buffer_length;
+    __net2addr (&io->io_net, &addr);
+    return __sendto (io->io_fd, bytes, length,&addr, sizeof (addr));
 }
 
-static void udpDestroyIO (struct _Net *net, NetIO_t *io)
+static void udpDestroyIO (NetIO_t *io)
 {
     close (io->io_fd);
 }

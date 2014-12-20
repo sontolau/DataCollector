@@ -45,6 +45,14 @@ static NetIOHandler_t NetProtocolHandler[] = {
     }
 };
 
+int NetIOInit (NetIO_t *io, const NetInfo_t *info)
+{
+    memset (io, '\0', sizeof (NetIO_t));
+    io->__handler = &NetProtocolHandler[info->net_type];
+    io->io_net    = *info;
+    return NetIOCreate (io, info);
+}
+
 DC_INLINE int PutNetBufferIntoQueue (Net_t *serv, NetBuffer_t *buf, DC_queue_t *queue)
 {
     int ret;
@@ -148,8 +156,8 @@ static inline void NetProcessReply (Net_t *serv)
     NetBuffer_t *buf;
 
     while ((buf = GetNetBufferFromReplyQueue (serv))) {
-        if (buf->io.__handler->netWriteToIO (serv, &buf->io, buf) <= 0) {
-            buf->io.__handler->netDestroyIO (serv, &buf->io);
+        if (buf->io.__handler->netWriteToIO (&buf->io, buf->buffer, buf->buffer_length) <= 0) {
+            buf->io.__handler->netDestroyIO (&buf->io);
             ev_io_stop (serv->ev_loop, &buf->ev_io->io_ev);
             if (buf->io.__handler->netAcceptRemoteIO) {
                 NetIOFree (serv, buf->ev_io);
@@ -194,9 +202,9 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         buffer->io            = *io;
         buffer->ev_io         = io;
 
-        if ((buffer->buffer_length = io->__handler->netReadFromIO (srv, io, buffer)) <= 0) {
+        if ((buffer->buffer_length = io->__handler->netReadFromIO (io, buffer->buffer, buffer->buffer_size)) <= 0) {
             NetBufferFree (srv, buffer);
-            io->__handler->netDestroyIO (srv, io);
+            io->__handler->netDestroyIO (io);
             ev_io_stop (srv->ev_loop, w);
             if (io->__handler->netAcceptRemoteIO) {
                 NetIOFree (srv, io);
@@ -221,9 +229,9 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
         return;
     } else {
         memset (newio, '\0', sizeof (NetIO_t));
-        if (io->__handler->netAcceptRemoteIO (srv, newio, io) < 0) {
+        if (io->__handler->netAcceptRemoteIO (newio, io) < 0) {
             //TODO: process exception.
-            io->__handler->netDestroyIO (srv, io);
+            io->__handler->netDestroyIO (io);
             NetIOFree (srv, newio);
             return;
         } else {
@@ -251,7 +259,7 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 
         serv->delegate->getNetInfoWithIndex (serv, &io->io_net, i);
         io->__handler = &NetProtocolHandler[io->io_net.net_type];
-        if (io->__handler->netCreateIO (serv, io, &io->io_net) < 0) {
+        if (io->__handler->netCreateIO (io, &io->io_net) < 0) {
             return -1;
         } else {
             if (io->__handler->netAcceptRemoteIO) {
@@ -273,7 +281,7 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
 
     for (i=0; i<serv->config->num_net_io &&
                 serv->net_io; i++) {
-        serv->net_io[i].__handler->netDestroyIO (serv, &serv->net_io[i]);
+        serv->net_io[i].__handler->netDestroyIO (&serv->net_io[i]);
         ev_io_stop (serv->ev_loop, &serv->net_io[i].io_ev);
     }
 

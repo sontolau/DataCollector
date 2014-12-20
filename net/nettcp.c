@@ -1,6 +1,6 @@
 #include "netutil.c"
 
-static int tcpCreateIO (struct _Net *net, NetIO_t *io, const NetInfo_t *info)
+static int tcpCreateIO (NetIO_t *io, const NetInfo_t *info)
 {
     int flag = 1;
     struct sockaddr  addrinfo;
@@ -12,17 +12,24 @@ static int tcpCreateIO (struct _Net *net, NetIO_t *io, const NetInfo_t *info)
         return -1;
     }
 
-    setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-    __set_nonblock (io->io_fd);
-    if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0 ||
-        listen (io->io_fd, 1000) < 0) {
-        close (io->io_fd);
-        return -1;
+    if (info->net_flag & NET_IO_BIND) {
+        setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
+        __set_nonblock (io->io_fd);
+        if (bind (io->io_fd, &addrinfo, sizeof (struct sockaddr)) < 0 ||
+            listen (io->io_fd, 1000) < 0) {
+            close (io->io_fd);
+            return -1;
+        }
+    } else {
+        if (connect (io->io_fd, &addrinfo, sizeof (addrinfo)) < 0) {
+            close (io->io_fd);
+            return -1;
+        }
     }
     return 0;
 }
 
-static int tcpAcceptRemoteIO (struct _Net *net, NetIO_t *newio, const NetIO_t *io)
+static int tcpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *io)
 {
     struct sockaddr sockaddr;
     socklen_t       sklen = sizeof (sockaddr);
@@ -36,17 +43,18 @@ static int tcpAcceptRemoteIO (struct _Net *net, NetIO_t *newio, const NetIO_t *i
     return 0;
 }
 
-static double tcpReadFromIO (struct _Net *net, NetIO_t *io, NetBuffer_t *buffer)
+static double tcpReadFromIO (NetIO_t *io, unsigned char *bytes, unsigned int szbuf)
 {
-    return (buffer->buffer_length = __recv (io->io_fd, buffer->buffer, buffer->buffer_size));
+    
+    return __recv (io->io_fd, bytes, szbuf);
 }
 
-static double tcpWriteToIO (struct _Net *net, const NetIO_t *io, NetBuffer_t *buffer)
+static double tcpWriteToIO (const NetIO_t *io, const unsigned char *bytes, unsigned int length)
 {
-    return (buffer->buffer_length = __send (io->io_fd, buffer->buffer, buffer->buffer_length));
+    return __send (io->io_fd, bytes, length);
 }
 
-static void tcpDestroyIO (struct _Net *net, NetIO_t *io)
+static void tcpDestroyIO (NetIO_t *io)
 {
     close (io->io_fd);
 }

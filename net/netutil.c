@@ -17,7 +17,7 @@ DC_INLINE long __recv (int sock, unsigned char *buf, unsigned int size)
     return szread;
 }
 
-DC_INLINE long __send (int sock, unsigned char *buf, unsigned int size)
+DC_INLINE long __send (int sock, const unsigned char *buf, unsigned int size)
 {
     long szwrite;
 
@@ -50,7 +50,7 @@ DC_INLINE long __recvfrom (int sock, unsigned char *buf, unsigned int size,
     return szread;
 }
 
-DC_INLINE long __sendto (int sock, unsigned char *buf, unsigned int size,
+DC_INLINE long __sendto (int sock, const unsigned char *buf, unsigned int size,
                          struct sockaddr *addr, socklen_t sklen)
 {
     long szwrite;

@@ -24,6 +24,9 @@ enum {
 #endif
 
 typedef struct _NetInfo {
+
+#define NET_IO_BIND  (1<<0)
+    int net_flag;
     int net_type;
     /*
      * if net_port is zero, a unix type socket will be created.
@@ -39,16 +42,31 @@ typedef struct _NetInfo {
     };
 } NetInfo_t;
 
-struct _NetIOHandler;
+struct _NetIO;
+
+typedef struct _NetIOHandler {
+    int (*netCreateIO) (struct _NetIO*, const NetInfo_t*);
+    int (*netAcceptRemoteIO) (struct _NetIO*,  const struct _NetIO*);
+    double (*netReadFromIO) (struct _NetIO*, unsigned char*, unsigned int szbuf);
+    double (*netWriteToIO) (const struct _NetIO*, const unsigned char*, unsigned int length);
+    void (*netDestroyIO) (struct _NetIO*);
+}NetIOHandler_t;
+
 typedef struct _NetIO {
     int io_fd;
     struct ev_io io_ev;
     NetInfo_t    io_net;
 
     DC_link_t    __buf_link;
-    struct _NetIOHandler *__handler;
+    NetIOHandler_t *__handler;
 } NetIO_t;
 
+extern int NetIOInit (NetIO_t *io, const NetInfo_t *info);
+#define NetIOCreate(io, info) (io->__handler->netCreateIO (io, info))
+#define NetIOAcceptRemote(io, to) (io->__handler->netAcceptRemoteIO (to, io))
+#define NetIOReadFrom(io, buf, szbuf)   (io->__handler->netReadFromIO (io, buf, szbuf))
+#define NetIOWriteTo(io, buf, len)      (io->__handler->netWriteToIO (io, buf, len))
+#define NetIODestroy(io)                (io->__handler->netDestroyIO(io))
 
 typedef struct _NetBuffer {
     NetIO_t      io;
@@ -60,16 +78,6 @@ typedef struct _NetBuffer {
         unsigned char buffer[0];
     };
 } NetBuffer_t;
-
-struct _Net;
-typedef struct _NetIOHandler {
-    int (*netCreateIO) (struct _Net*, NetIO_t*,  const NetInfo_t*);
-    int (*netAcceptRemoteIO) (struct _Net*, NetIO_t*,  const NetIO_t*);
-    double (*netReadFromIO) (struct _Net*, NetIO_t*, NetBuffer_t*);
-    double (*netWriteToIO) (struct _Net*, const NetIO_t*, NetBuffer_t*);
-    void (*netDestroyIO) (struct _Net*, NetIO_t*);
-}NetIOHandler_t;
-
 
 typedef struct _NetConfig {
     char *chdir;
