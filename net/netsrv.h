@@ -142,7 +142,7 @@ typedef struct _NetDelegate {
     void (*willRunNet) (Net_t *srv);
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
     void (*willChangeStatus) (Net_t *srv, int status);
-    void  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
+    int  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);
     void (*resourceUsage) (Net_t *srv, int type, float percent);
 } NetDelegate_t;

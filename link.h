@@ -21,8 +21,9 @@ extern void DC_link_remove (DC_link_t *link);
 
 #define DC_link_add(prev, link) DC_link_add_after(prev, link)
 
-#define DC_link_container_of(_lkptr, _type, _name) \
-    ((_type*)(((unsigned long)_lkptr)-(unsigned long)(&(((_type*)0)->_name))))
+#define DC_link_container_of(_lkptr, _type, _name) type_container_of(_lkptr, _type, _name)
+
+//    ((_type*)(((unsigned long)_lkptr)-(unsigned long)(&(((_type*)0)->_name))))
 
 #define DC_link_foreach_forward(_link, _header) \
     for(_link=_header->next; (_link && _link != _header); _link=_link->next)

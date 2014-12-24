@@ -50,7 +50,9 @@ int NetIOInit (NetIO_t *io, const NetInfo_t *info)
     memset (io, '\0', sizeof (NetIO_t));
     io->__handler = &NetProtocolHandler[info->net_type];
     io->io_net    = *info;
-    return NetIOCreate (io, info);
+
+    return 0;
+    //return NetIOCreate (io, info);
 }
 
 DC_INLINE int PutNetBufferIntoQueue (Net_t *serv, NetBuffer_t *buf, DC_queue_t *queue)
@@ -144,9 +146,11 @@ static inline void NetProcessRequest (Net_t *serv)
     while ((req_buf = GetNetBufferFromRequestQueue (serv))) { 
         //TODO: add code here to process request from remote. 
         if (serv->delegate && serv->delegate->processRequest) {
-            serv->delegate->processRequest (serv, req_buf);
-            //NetCommitIOBuffer (serv, &req_buf->io);
-            NetBufferFree (serv, req_buf);
+            if (serv->delegate->processRequest (serv, req_buf)) {
+                PutNetBufferIntoReplyQueue (serv, req_buf);
+            } else {
+                NetBufferFree (serv, req_buf);
+            }
         }
     }
 }

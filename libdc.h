@@ -42,5 +42,8 @@
 
 typedef void* HDC;
 
+#define type_container_of(_ptr, _type, _name) \
+    ((_type*)(((unsigned long)_ptr)-(unsigned long)(&(((_type*)0)->_name))))
+
 
 #endif
