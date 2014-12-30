@@ -17,4 +17,3 @@ install: ${LIB}
 	fi;\
 	install -m 0664 ./netsrv.h /usr/include/libpnet;\
 	install -m 0755 ${LIB} /usr/lib/;\
-	ldconfig 
