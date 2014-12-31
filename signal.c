@@ -1,4 +1,5 @@
 #include "signal.h"
+#include <sys/time.h>
 
 #define __SIG_EXIT ((DC_sig_t)0xFFFFFFFE)
 
@@ -67,17 +68,31 @@ HDC DC_signal_alloc ()
 DC_sig_t DC_signal_wait (HDC hsig, long time)
 {
     struct _DC_signal *sig = (struct _DC_signal*)hsig;
-    struct timespec timedwait = {(long)(time/1000), (time%1000)*1000000};
+    struct timespec timedwait = {0, 0};
+    struct timeval  now;
     int ret;
     DC_sig_t signal;
 
     if (pthread_mutex_lock (&sig->__sig_mutex) < 0) {
         return INVALID_SIGNAL;
     }
-
     if (time) {
+        gettimeofday(&now, NULL); 
+        timedwait.tv_sec = now.tv_usec*1000;
+
+#define NS(ms) (ms * 1000000)
+#define ABS_NS_TIME(now, delay)   (now.tv_usec * 1000 + delay)
+
+         timedwait.tv_sec = now.tv_sec + ABS_NS_TIME(now, NS(time))/1000000000;
+         timedwait.tv_nsec = ABS_NS_TIME(now, NS(time)) % 1000000000;
+
+/*
+        clock_gettime (CLOCK_REALTIME, &timedwait);
+        timedwait.tv_sec += (long)(time/1000);
+        timedwait.tv_nsec += (time%1000)*1000000;
+*/
         ret = pthread_cond_timedwait (&sig->__sig_cond, &sig->__sig_mutex, &timedwait);
-        if (errno == ETIMEDOUT) {
+        if (ret == ETIMEDOUT) {
             sig->__sig = 0;
         }
     } else {

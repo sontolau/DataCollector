@@ -148,6 +148,7 @@ static inline void NetProcessRequest (Net_t *serv)
         if (serv->delegate && serv->delegate->processRequest) {
             if (serv->delegate->processRequest (serv, req_buf)) {
                 PutNetBufferIntoReplyQueue (serv, req_buf);
+		WakeUpReplyProc (serv);
             } else {
                 NetBufferFree (serv, req_buf);
             }
@@ -206,7 +207,7 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         buffer->io            = *io;
         buffer->ev_io         = io;
 
-        if ((buffer->buffer_length = io->__handler->netReadFromIO (io, buffer->buffer, buffer->buffer_size)) <= 0) {
+        if ((buffer->buffer_length = io->__handler->netReadFromIO (&buffer->io, buffer->buffer, buffer->buffer_size)) <= 0) {
             NetBufferFree (srv, buffer);
             io->__handler->netDestroyIO (io);
             ev_io_stop (srv->ev_loop, w);
@@ -332,13 +333,11 @@ DC_INLINE int InitNet (Net_t *serv)
         fprintf (stderr, "pthread_rwlock_init failed.\n");
         return -1;
     }
-
-    if (DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0 ||
+    if (DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0,
         DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0) {
         fprintf (stderr, "DC_signal_wait_asyn failed.\n");
         return -1;
     }
-
     serv->ev_loop = ev_loop_new (0);
     ev_set_userdata (serv->ev_loop, serv);
     return 0;
@@ -421,20 +420,18 @@ int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)
         return -1;
     }
 
-    if (!(ret = InitNet (serv))) {
-        if (config->daemon) {
-       	    pid = fork ();
+    if (config->daemon) {
+        pid = fork ();
 
-            if (pid > 0) {
-                ReleaseNet (serv);
-                exit (EXIT_SUCCESS);
-            } else if (pid < 0) {
-                fprintf (stderr, "fork call failed due to %s\n", strerror (errno));
-                ReleaseNet (serv);
-                return -1;
-            }
+        if (pid > 0) {
+            exit (EXIT_SUCCESS);
+        } else if (pid < 0) {
+            fprintf (stderr, "fork call failed due to %s\n", strerror (errno));
+            return -1;
         }
+    }
 
+    if (!(ret = InitNet (serv))) {
         ret = RunNet (serv);
     }
 

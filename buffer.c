@@ -6,13 +6,13 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
     register DC_buffer_t *bufptr = NULL;
 
     memset (pool, '\0', sizeof (DC_buffer_pool_t));
-
+    pool->numbufs       = num;
     pool->num_allocated = 0;
     pool->__bufptr = (DC_buffer_t*)calloc (num, size + sizeof (DC_buffer_t));
     if (pool->__bufptr == NULL) {
         return -1;
     }
-
+   
     bufptr = pool->__bufptr;
     for (i=0; i<num; i++) {
         bufptr->id     = (long long)pool->__bufptr+i;
