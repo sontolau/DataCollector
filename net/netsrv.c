@@ -333,7 +333,7 @@ DC_INLINE int InitNet (Net_t *serv)
         fprintf (stderr, "pthread_rwlock_init failed.\n");
         return -1;
     }
-    if (DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0,
+    if (DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0 ||
         DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0) {
         fprintf (stderr, "DC_signal_wait_asyn failed.\n");
         return -1;
