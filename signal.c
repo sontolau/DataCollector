@@ -136,6 +136,7 @@ int      DC_signal_wait_asyn (HDC hsig,
 
 int     DC_signal_send (HDC sig, DC_sig_t s)
 {
+
     if (pthread_mutex_lock (&((struct _DC_signal*)sig)->__sig_mutex) < 0) {
         return -1;
     }
@@ -144,6 +145,15 @@ int     DC_signal_send (HDC sig, DC_sig_t s)
 
     pthread_mutex_unlock (&((struct _DC_signal*)sig)->__sig_mutex);
     return pthread_cond_broadcast (&((struct _DC_signal*)sig)->__sig_cond);
+//    struct _DC_signal hsig = (struct _DC_signal*)sig;
+/*
+    while (!pthread_mutex_trylock (&hsig->__sig_mutex)) {
+        hsig->__sig = s;
+        pthread_mutex_unlock (&hsig->__sig_mutex);
+        pthread_cond_broadcast (&hsig->__sig_cond);
+    }
+    return 0;
+*/
 }
 
 static void __sig_free (void *obj)
@@ -156,12 +166,13 @@ static void __sig_free (void *obj)
 void     DC_signal_free (HDC hsig)
 {
     struct _DC_signal *sig = (struct _DC_signal*)hsig;
-
-    DC_signal_send (sig, __SIG_EXIT);
-    //DC_list_loop (&sig->__sig_async_func, __sig_free);
-    DC_list_destroy (&sig->__sig_async_func);
-    pthread_mutex_destroy (&sig->__sig_mutex);
-    pthread_cond_destroy (&sig->__sig_cond);
-    free (sig);
+    
+    if (sig) {
+    	DC_signal_send (sig, __SIG_EXIT);
+    	DC_list_destroy (&sig->__sig_async_func);
+    	pthread_mutex_destroy (&sig->__sig_mutex);
+    	pthread_cond_destroy (&sig->__sig_cond);
+    	free (sig);
+    }
 }
 

@@ -1,9 +1,10 @@
 #include "netutil.c"
 
-static int udpCreateIO (NetIO_t *io, const NetInfo_t *info)
+static int udpCreateIO (NetIO_t *io, const NetInfo_t *info, NetConfig_t *cfg)
 {
     int flag = 1;
     struct sockaddr  addrinfo;
+    unsigned int szbuf = cfg->buffer_size;
 
     __net2addr (info, &addrinfo);
 
@@ -11,6 +12,9 @@ static int udpCreateIO (NetIO_t *io, const NetInfo_t *info)
     if (io->io_fd < 0) {
         return -1;
     }
+
+    setsockopt (io->io_fd, SOL_SOCKET, SO_SNDBUF, &szbuf, sizeof (int));
+    setsockopt (io->io_fd, SOL_SOCKET, SO_RCVBUF, &szbuf, sizeof (int));
 
     if (info->net_flag & NET_IO_BIND) {
         setsockopt (io->io_fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));

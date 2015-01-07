@@ -46,9 +46,10 @@ typedef struct _NetInfo {
 } NetInfo_t;
 
 struct _NetIO;
+struct _NetConfig;
 
 typedef struct _NetIOHandler {
-    int (*netCreateIO) (struct _NetIO*, const NetInfo_t*);
+    int (*netCreateIO) (struct _NetIO*, const NetInfo_t*, struct _NetConfig*);
     int (*netAcceptRemoteIO) (struct _NetIO*,  const struct _NetIO*);
     double (*netReadFromIO) (struct _NetIO*, unsigned char*, unsigned int szbuf);
     double (*netWriteToIO) (const struct _NetIO*, const unsigned char*, unsigned int length);

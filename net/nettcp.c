@@ -1,6 +1,6 @@
 #include "netutil.c"
 
-static int tcpCreateIO (NetIO_t *io, const NetInfo_t *info)
+static int tcpCreateIO (NetIO_t *io, const NetInfo_t *info, NetConfig_t *cfg)
 {
     int flag = 1;
     struct sockaddr  addrinfo;

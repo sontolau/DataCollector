@@ -3,12 +3,12 @@ STLIB=libpnet.a
 OBJS=netsrv.o netcomm.o
 CFLAGS=-Wall -fPIC -g
 CC=gcc
-LIBS=-lpthread -lev
+LIBS=-lpthread 
 INCDIRS=-I/usr/include/libev
 
 all:${LIB} ${STLIB}
 ${LIB}:${OBJS}
-	${CC} -shared ${OBJS} -o ${LIB} ${CFLAGS} ${LIBS} -lDC
+	${CC} -shared ${OBJS} -o ${LIB} ${CFLAGS} ${LIBS}
 ${STLIB}:${OBJS}
 	ar r ${STLIB} ${OBJS}
 .c.o:
