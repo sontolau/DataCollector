@@ -15,10 +15,6 @@
 #define __SIG_REQUEST (__SIG__ + 1)
 #define __SIG_REPLY   (__SIG__ + 2)
 
-#define WakeUpQueueProc(serv, sig)   do{ DC_signal_send (serv->sig_handle, sig);}while (0)
-#define WakeUpRequestProc(serv) WakeUpQueueProc(serv, __SIG_REQUEST)
-#define WakeUpReplyProc(serv)    WakeUpQueueProc(serv, __SIG_REPLY)
-
 extern NetBuffer_t *NetBufferAlloc (Net_t *srv);
 extern void NetBufferFree (Net_t *srv, NetBuffer_t *buf);
 extern NetIO_t     *NetIOAlloc (Net_t *srv);
@@ -52,7 +48,6 @@ int NetIOInit (NetIO_t *io, const NetInfo_t *info)
     io->io_net    = *info;
 
     return 0;
-    //return NetIOCreate (io, info);
 }
 
 DC_INLINE int PutNetBufferIntoQueue (Net_t *serv, NetBuffer_t *buf, DC_queue_t *queue)
@@ -127,7 +122,7 @@ void NetCommitIOBuffer (Net_t *srv, NetIO_t *io)
         linkptr = tmpptr;
     }
 
-    WakeUpReplyProc (srv);
+    DC_signal_send (srv->sig_handle, __SIG_REPLY);
 }
 
 DC_INLINE void NetSetStatus (Net_t *serv, int status)
@@ -139,19 +134,28 @@ DC_INLINE void NetSetStatus (Net_t *serv, int status)
     serv->status = status;
 }
 
+static int ProcessRequestCore (Net_t *serv, NetBuffer_t *buf)
+{
+    int ret = 0;
+    if (serv->delegate && serv->delegate->processRequest) {
+        //pthread_rwlock_wrlock (&serv->serv_lock);
+        ret = serv->delegate->processRequest (serv, buf);
+        //pthread_rwlock_unlock (&serv->serv_lock);
+    }
+
+    return ret;
+}
 static inline void NetProcessRequest (Net_t *serv)
 {
     NetBuffer_t  *req_buf = NULL;
 
     while ((req_buf = GetNetBufferFromRequestQueue (serv))) { 
         //TODO: add code here to process request from remote. 
-        if (serv->delegate && serv->delegate->processRequest) {
-            if (serv->delegate->processRequest (serv, req_buf)) {
-                PutNetBufferIntoReplyQueue (serv, req_buf);
-		WakeUpReplyProc (serv);
-            } else {
-                NetBufferFree (serv, req_buf);
-            }
+        if (ProcessRequestCore (serv, req_buf)) {
+            PutNetBufferIntoReplyQueue (serv, req_buf);
+            DC_signal_send (serv->sig_handle, __SIG_REPLY);
+        } else {
+            NetBufferFree (serv, req_buf);
         }
     }
 }
@@ -161,7 +165,9 @@ static inline void NetProcessReply (Net_t *serv)
     NetBuffer_t *buf;
 
     while ((buf = GetNetBufferFromReplyQueue (serv))) {
-        if (buf->io.__handler->netWriteToIO (&buf->io, buf->buffer, buf->buffer_length) <= 0) {
+        if (buf->io.__handler->netWriteToIO (&buf->io, 
+                                         buf->buffer, 
+                                         buf->buffer_length) <= 0) {
             buf->io.__handler->netDestroyIO (&buf->io);
             ev_io_stop (serv->ev_loop, &buf->ev_io->io_ev);
             if (buf->io.__handler->netAcceptRemoteIO) {
@@ -179,11 +185,13 @@ static void NetSignalHandler (DC_sig_t sig, void *data)
     switch (sig) {
         case __SIG_REQUEST:
         {
+            fprintf (stderr, "[SIGNAL]Process Request Queue\n");
             NetProcessRequest (serv);
         }
         break;
         case __SIG_REPLY:
         {
+            fprintf (stderr, "[SIGNAL]Process Reply Queue\n");
             NetProcessReply (serv);
         }
         default:
@@ -196,18 +204,20 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
     NetBuffer_t *buffer = NULL;
-
+    
     buffer = NetBufferAlloc (srv);
     if (buffer == NULL) {
         //TODO: process exception.
+        fprintf (stderr, "Can't allocate buffer.\n");
         return;
     } else {
         buffer->buffer_size   = srv->config->buffer_size;
         buffer->buffer_length = 0;
         buffer->io            = *io;
         buffer->ev_io         = io;
-
-        if ((buffer->buffer_length = io->__handler->netReadFromIO (&buffer->io, buffer->buffer, buffer->buffer_size)) <= 0) {
+        if ((buffer->buffer_length = io->__handler->netReadFromIO (
+                                       &buffer->io, buffer->buffer, 
+                                       buffer->buffer_size)) <= 0) {
             NetBufferFree (srv, buffer);
             io->__handler->netDestroyIO (io);
             ev_io_stop (srv->ev_loop, w);
@@ -218,12 +228,14 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
             return;
         } else {
             PutNetBufferIntoRequestQueue (srv, buffer);
-            WakeUpRequestProc (srv);
+            DC_signal_send (srv->sig_handle, __SIG_REQUEST);
         }
     }
 }
 
-DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
+DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, 
+                                    ev_io *w, 
+                                    int revents)
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
@@ -241,7 +253,9 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, ev_io *w, int revents)
             return;
         } else {
             *newio = *io;
-            ev_io_init (&newio->io_ev, NetIOReadCallBack, newio->io_fd, EV_READ);
+            ev_io_init (&newio->io_ev, 
+                        NetIOReadCallBack, 
+                        newio->io_fd, EV_READ);
             ev_io_start (srv->ev_loop, &newio->io_ev);
         }
     }
@@ -305,10 +319,10 @@ DC_INLINE int InitNet (Net_t *serv)
 
     if (DC_buffer_pool_init (&serv->net_buffer_pool, 
                              config->max_buffers,
-                             config->buffer_size) < 0 ||
+                             config->buffer_size+sizeof (NetBuffer_t)) < 0 ||
         DC_buffer_pool_init (&serv->net_io_pool,
                              config->max_peers,
-                             sizeof (NetIO_t) < 0)) {
+                             sizeof (NetIO_t)) < 0) {
         fprintf (stderr, "DC_buffer_pool_init failed.\n");
         return -1;
     }
@@ -329,12 +343,19 @@ DC_INLINE int InitNet (Net_t *serv)
         return -1;
     }
 
-    if (pthread_rwlock_init (&serv->serv_lock, NULL) < 0) {
+    if (pthread_rwlock_init (&serv->serv_lock, NULL) < 0 ||
+        pthread_mutex_init (&serv->buf_lock, NULL) < 0) {
         fprintf (stderr, "pthread_rwlock_init failed.\n");
         return -1;
     }
-    if (DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0
-        || DC_signal_wait_asyn (serv->sig_handle, 1000, NetSignalHandler, serv) < 0) {
+    if (DC_signal_wait_asyn (serv->sig_handle, 
+                             1000, 
+                             NetSignalHandler, 
+                             serv) < 0 ||
+        DC_signal_wait_asyn (serv->sig_handle,
+                             1000,
+                             NetSignalHandler,
+                             serv) < 0) {
         fprintf (stderr, "DC_signal_wait_asyn failed.\n");
         return -1;
     }
@@ -396,6 +417,7 @@ DC_INLINE int RunNet (Net_t *serv)
     return 0;
 }
 
+#define DP(x) fprintf(stderr, x)
 DC_INLINE void ReleaseNet (Net_t *serv)
 {
     ev_loop_destroy (serv->ev_loop);
@@ -405,6 +427,7 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     DC_buffer_pool_destroy (&serv->net_io_pool);
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
     pthread_rwlock_destroy (&serv->serv_lock);
+    pthread_mutex_destroy (&serv->buf_lock);
 }
 
 int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)

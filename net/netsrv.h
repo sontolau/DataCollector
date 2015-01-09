@@ -105,8 +105,12 @@ typedef struct _Net {
     NetIO_t  *net_io;
     struct ev_loop *ev_loop;
     int              status; //read only
-    DC_buffer_pool_t net_buffer_pool;
-    DC_buffer_pool_t net_io_pool;
+
+    struct {
+        DC_buffer_pool_t net_buffer_pool;
+        DC_buffer_pool_t net_io_pool;
+        pthread_mutex_t  buf_lock;
+    };
 
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;

@@ -19,6 +19,8 @@ static void *__wait_cb (void *data)
     struct _DC_signal *sig = (struct _DC_signal*)data;
     int    signo;
 
+    pthread_mutex_unlock (&sig->__sig_mutex);
+
     while ((signo = DC_signal_wait (sig, sig->__timedwait)) != INVALID_SIGNAL) {
         if (signo == __SIG_EXIT) {
             break;
@@ -76,33 +78,42 @@ DC_sig_t DC_signal_wait (HDC hsig, long time)
     if (pthread_mutex_lock (&sig->__sig_mutex) < 0) {
         return INVALID_SIGNAL;
     }
-    if (time) {
-        gettimeofday(&now, NULL); 
-        timedwait.tv_sec = now.tv_usec*1000;
+
+    do {
+        if (time) {
+            gettimeofday(&now, NULL); 
+            timedwait.tv_sec = now.tv_usec*1000;
 
 #define NS(ms) (ms * 1000000)
 #define ABS_NS_TIME(now, delay)   (now.tv_usec * 1000 + delay)
 
-         timedwait.tv_sec = now.tv_sec + ABS_NS_TIME(now, NS(time))/1000000000;
-         timedwait.tv_nsec = ABS_NS_TIME(now, NS(time)) % 1000000000;
-
-/*
-        clock_gettime (CLOCK_REALTIME, &timedwait);
-        timedwait.tv_sec += (long)(time/1000);
-        timedwait.tv_nsec += (time%1000)*1000000;
-*/
-        ret = pthread_cond_timedwait (&sig->__sig_cond, &sig->__sig_mutex, &timedwait);
-        if (ret == ETIMEDOUT) {
-            sig->__sig = 0;
+            timedwait.tv_sec = now.tv_sec + ABS_NS_TIME(now, 
+                               NS(time))/1000000000;
+            timedwait.tv_nsec = ABS_NS_TIME(now, NS(time)) % 1000000000;
+            if ((ret = pthread_cond_timedwait (&sig->__sig_cond, 
+                                                &sig->__sig_mutex, 
+                                                &timedwait))) {
+                pthread_mutex_unlock (&sig->__sig_mutex);
+                if (ret == ETIMEDOUT) {
+                    return 0;
+                } else {
+                    return INVALID_SIGNAL;
+                }
+            }
+        } else {
+            if ((ret = pthread_cond_wait (&sig->__sig_cond, 
+                                          &sig->__sig_mutex))) {
+                pthread_mutex_unlock (&sig->__sig_mutex);
+                return INVALID_SIGNAL;
+            }
         }
-    } else {
-        ret = pthread_cond_wait (&sig->__sig_cond, &sig->__sig_mutex);
-    }
 
-    signal = sig->__sig;
+        signal = sig->__sig;
+    } while (0);
+
     pthread_mutex_unlock (&sig->__sig_mutex);
 
-    return ret<0?INVALID_SIGNAL:signal;
+    return signal;
 }
 
 
@@ -129,7 +140,7 @@ int      DC_signal_wait_asyn (HDC hsig,
     }
 
     DC_list_insert_object_at_index (&sig->__sig_async_func, asyn_func, 0);
-    pthread_mutex_unlock (&sig->__sig_mutex);
+   // pthread_mutex_unlock (&sig->__sig_mutex);
     return 0;
 }
 
@@ -137,14 +148,12 @@ int      DC_signal_wait_asyn (HDC hsig,
 int     DC_signal_send (HDC sig, DC_sig_t s)
 {
 
-    if (pthread_mutex_lock (&((struct _DC_signal*)sig)->__sig_mutex) < 0) {
-        return -1;
-    }
-
+    pthread_mutex_lock (&((struct _DC_signal*)sig)->__sig_mutex);
     ((struct _DC_signal*)sig)->__sig = s;
-
+    pthread_cond_broadcast (&((struct _DC_signal*)sig)->__sig_cond);
     pthread_mutex_unlock (&((struct _DC_signal*)sig)->__sig_mutex);
-    return pthread_cond_broadcast (&((struct _DC_signal*)sig)->__sig_cond);
+
+    return 0;
 //    struct _DC_signal hsig = (struct _DC_signal*)sig;
 /*
     while (!pthread_mutex_trylock (&hsig->__sig_mutex)) {

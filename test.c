@@ -3,6 +3,8 @@
 #include "list.h"
 #include "dict.h"
 #include "queue.h"
+#include "signal.h"
+#include "buffer.h"
 
 struct x {
     int y;
@@ -14,7 +16,58 @@ void func_test (int *x, char *y, float *m, void *n)
 {
     printf ("%lx,%lx,%lx,%lx\n", &x,&y,&m,&n);
 }
-int main(){
+
+void __sig_func (DC_sig_t sig, void *dat)
+{
+    printf ("Signal %s\n", sig==1?"A":"B");
+}
+
+
+int main ()
+{
+    int i= 0;
+    DC_buffer_pool_t  pool;
+    DC_buffer_t  *bufptr;
+
+    if (DC_buffer_pool_init (&pool, 10, 100)) {
+        fprintf (stderr, "DC_buffer_pool_init failed\n");
+        return -1;
+    }
+    int j = 5;
+
+    for (j=0; j<5; j++) {
+        for (i=0; i<100; i++) {
+            if ((bufptr = DC_buffer_pool_alloc (&pool, 100))) {
+            memset (bufptr->data, '\0', bufptr->length);
+            memset (bufptr->data, 'f', 99);
+            printf ("data:%s\n", bufptr->data);
+            printf ("%p\n", bufptr);
+            printf ("%p\n", DC_buffer_from (bufptr->data));
+            DC_buffer_pool_free (&pool, DC_buffer_from (bufptr->data));
+            }
+        }
+    }
+    DC_buffer_pool_destroy (&pool);
+}
+
+int __main ()
+{
+    HDC  *sig;
+    srand (time (NULL));
+    sig = DC_signal_alloc ();
+    DC_signal_wait_asyn (sig, 0, __sig_func, NULL);
+    DC_signal_wait_asyn (sig, 0, __sig_func, NULL);
+    int siga[] = {1,2};
+
+    while (1) {
+        DC_signal_send (sig, siga[random()%2]);
+        usleep (10000);
+    }
+
+    return 0;
+}
+
+int xxxmain(){
 #if 0
     struct x q,w,e;
 
