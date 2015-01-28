@@ -2,6 +2,7 @@
 #define _DC_DICT_T
 
 #include "hash.h"
+#include "error.h"
 
 DC_CPP (extern "C" {)
 

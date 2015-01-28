@@ -44,9 +44,10 @@ static double udpReadFromIO (NetIO_t *io, unsigned char *bytes, unsigned int szb
 double udpWriteToIO (const NetIO_t *io, const unsigned char *bytes, unsigned int length)
 {
     struct sockaddr addr;
-
+    double szsend = 0;
     __net2addr (&io->io_net, &addr);
-    return __sendto (io->io_fd, bytes, length,&addr, sizeof (addr));
+    szsend =  __sendto (io->io_fd, bytes, length,&addr, sizeof (addr));
+    return szsend;
 }
 
 static void udpDestroyIO (NetIO_t *io)

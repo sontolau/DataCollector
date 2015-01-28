@@ -1,6 +1,7 @@
 #ifndef _DC_HASH_H
 #define _DC_HASH_H
 
+#include "error.h"
 #include "libdc.h"
 
 DC_CPP (extern "C" {)

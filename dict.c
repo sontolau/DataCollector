@@ -42,11 +42,12 @@ int DC_dict_init (DC_dict_t *dic, ...) {
     va_list ap;
     char *key;
     void *arg, *obj;
+    int ret = ERR_OK;
 
-    if (DC_hash_init (dic, 100, __dict_index_func,
-                      __dict_compare_func,
-                      __dict_destroy_func) < 0) {
-        return -1;
+    if ((ret = DC_hash_init (dic, 100, __dict_index_func,
+                             __dict_compare_func,
+                             __dict_destroy_func))) {
+        return ret;
     }
 
     va_start (ap, dic);
@@ -65,7 +66,7 @@ int DC_dict_init (DC_dict_t *dic, ...) {
         }
     }
 
-    return 0;
+    return ERR_OK;
 }
 
 int DC_dict_add_object_with_key (DC_dict_t *dic, const char *key, const void *obj) {
@@ -73,7 +74,7 @@ int DC_dict_add_object_with_key (DC_dict_t *dic, const char *key, const void *ob
 
     keyobj = (void**)calloc (2, sizeof (void*));
     if (keyobj == NULL) {
-        return -1;
+        return ERR_SYSTEM;
     }
 
     keyobj[0] = strdup ((char*)key);

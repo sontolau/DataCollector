@@ -3,6 +3,7 @@
 
 #include "libdc.h"
 #include "link.h"
+#include "error.h"
 
 DC_CPP(extern "C" {)
 

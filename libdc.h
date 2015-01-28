@@ -45,5 +45,20 @@ typedef void* HDC;
 #define type_container_of(_ptr, _type, _name) \
     ((_type*)(((unsigned long)_ptr)-(unsigned long)(&(((_type*)0)->_name))))
 
+#ifndef __PRIVATE__
+#define __PRIVATE__(x)  __##x
+#endif
+
+#ifndef __PUBLIC__
+#define __PUBLIC__(x)  x
+#endif
+
+#define PRI(x) __PRIVATE__(x)
+#define PUB(x) __PUBLIC__(x)
+
+
+#ifndef __INOUT__
+#define __INOUT__
+#endif
 
 #endif

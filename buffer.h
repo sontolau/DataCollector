@@ -2,6 +2,7 @@
 #define _BUFFER_H
 
 #include "link.h"
+#include "error.h"
 
 typedef struct _Buffer {
     int          busy;

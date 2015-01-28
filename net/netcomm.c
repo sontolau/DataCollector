@@ -1,13 +1,3 @@
-#ifndef _NETUTIL_H
-#define _NETUTIL_H
-
-#include <libdc/libdc.h>
-#include "netsrv.h"
-#include <libdc/buffer.h>
-#include <fcntl.h>
-
-DC_CPP (extern "C" {)
-
 
 DC_INLINE void SetNonblockFD (int fd)
 {
@@ -26,18 +16,18 @@ DC_INLINE void SetNonblockFD (int fd)
 #define BufferAlloc(srv, bufptr, type, pool) \
     do {\
         DC_buffer_t *__buf = NULL;\
-        pthread_mutex_lock (&srv->buf_lock);\
+        DC_mutex_lock (&srv->buf_lock, 0, 1);\
         __buf = DC_buffer_pool_alloc (&pool, srv->config->buffer_size);\
-        pthread_mutex_unlock (&srv->buf_lock);\
+        DC_mutex_unlock (&srv->buf_lock);\
         bufptr = (__buf?((type*)__buf->data):NULL);\
     } while (0)
 
 #define BufferFree(srv, buf, pool) \
     do {\
         DC_buffer_t *__buf = (DC_buffer_t*)DC_buffer_from (buf);\
-        pthread_mutex_lock (&srv->buf_lock);\
+        DC_mutex_lock (&srv->buf_lock, 0, 1);\
         DC_buffer_pool_free (&pool, __buf);\
-        pthread_mutex_unlock (&srv->buf_lock);\
+        DC_mutex_unlock (&srv->buf_lock);\
     } while (0)
 
 
@@ -94,7 +84,4 @@ void NetIOFree (Net_t *srv, NetIO_t *io)
 }
 
 
-
-DC_CPP (})
-#endif
 

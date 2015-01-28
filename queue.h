@@ -2,6 +2,7 @@
 #define _DC_QUEUE_H
 
 #include "libdc.h"
+#include "error.h"
 
 DC_CPP (extern "C" {)
 

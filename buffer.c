@@ -13,10 +13,9 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
     pool->unit_size     = size;
     if (!(pool->__bufptr= (DC_buffer_t*)malloc 
                           (num*(size+sizeof(DC_buffer_t))))) {
-        return -1;
+        return ERR_SYSTEM;
     }
 
-    //fprintf (stderr, "Buffer Pool Address: %p [*****************]\n", pool->__bufptr);
     ptr = (unsigned char*)pool->__bufptr;
     
     for (i=0; i<num; i++) {
@@ -30,7 +29,7 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
         memset (bufptr->data, '\0', size);
     }
 
-    return 0;
+    return ERR_OK;
 }
 
 DC_buffer_t *DC_buffer_pool_alloc (DC_buffer_pool_t *pool, 

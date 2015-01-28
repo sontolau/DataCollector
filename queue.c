@@ -13,7 +13,7 @@ int DC_queue_init (DC_queue_t *queue, unsigned int queue_size, qobject_t zero)
 
     queue->__queue_buffer = (qobject_t*)calloc (queue_size, sizeof (qobject_t));
     if (!queue->__queue_buffer) {
-        return -1;
+        return ERR_SYSTEM;
     }
 
     queue->queue_size       = queue_size;
@@ -25,7 +25,7 @@ int DC_queue_init (DC_queue_t *queue, unsigned int queue_size, qobject_t zero)
     }
 
     queue->__tail_ptr = queue->__head_ptr = queue->__queue_buffer;
-    return 0;
+    return ERR_OK;
 }
 
 
@@ -46,7 +46,7 @@ int DC_queue_is_full (const DC_queue_t *queue)
 int DC_queue_push (DC_queue_t *queue, qobject_t obj, int overwrite)
 {
     if (!overwrite && DC_queue_is_full (queue)) {
-        return -1;
+        return ERR_NOMEM;
     }
 
     *queue->__head_ptr = obj;
@@ -55,7 +55,7 @@ int DC_queue_push (DC_queue_t *queue, qobject_t obj, int overwrite)
                                              queue->__queue_buffer, \
                                              queue->queue_size));
     queue->length = (++queue->length>queue->queue_size?queue->queue_size:queue->length);
-    return 0;
+    return ERR_OK;
 }
 
 qobject_t DC_queue_pop (DC_queue_t *queue)

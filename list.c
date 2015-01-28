@@ -66,7 +66,7 @@ int  DC_list_init (DC_list_t *list, void (*cb)(void*), ...) {
     }
     va_end (ap);
 
-    return 0;
+    return ERR_OK;
 }
 
 int DC_list_add_object (DC_list_t *list, void *obj) {
@@ -74,14 +74,14 @@ int DC_list_add_object (DC_list_t *list, void *obj) {
 
     cr = (struct list_carrier*)malloc(sizeof (struct list_carrier));
     if (cr == NULL) {
-        return -1;
+        return ERR_SYSTEM;
     }
 
     list->count++;
     
     cr->obj = obj;
     DC_link_add_before (&list->__tail, &cr->link);
-    return 0;
+    return ERR_OK;
 }
 
 int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int index)
@@ -91,7 +91,7 @@ int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int ind
 
     cr = (struct list_carrier*)malloc (sizeof (struct list_carrier));
     if (cr == NULL) {
-        return -1;
+        return ERR_SYSTEM;
     }
 
     DC_link_foreach (linkptr, ((DC_link_t*)&list->__head)) {
@@ -102,13 +102,13 @@ int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int ind
     }
 
     if (index > 0) {
-        return -1;
+        return ERR_NOTFOUND;
     }
 
     cr->obj = obj;
     DC_link_add (linkptr, &cr->link);
 
-    return 0;
+    return ERR_OK;
 }
 
 void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {

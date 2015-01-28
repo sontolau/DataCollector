@@ -82,7 +82,7 @@ int DC_hash_init (DC_hash_t *hash,
     memset (hash, '\0', sizeof (DC_hash_t));
     list_map = (DC_list_t**)calloc (size, sizeof (DC_list_t*));
     if (list_map == NULL)  {
-        return -1;
+        return ERR_SYSTEM;
     }
 
     for (i=0; i<size; i++) {
@@ -99,7 +99,7 @@ int DC_hash_init (DC_hash_t *hash,
     hash->__hash_compare = comp_func;
     hash->__hash_destroy = dest_func;
 
-    return 0;
+    return ERR_OK;
 }
 
 int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
@@ -112,7 +112,7 @@ int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
                          hash->__hash_id);
 
     if (list == NULL) {
-        return -1;
+        return ERR_NOTFOUND;
     }
 
     if (!(hc = __new_hash_carrier (key, obj)) ||
@@ -122,7 +122,7 @@ int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
     
     hash->num_objects++;
 
-    return 0;
+    return ERR_OK;
 }
 
 
