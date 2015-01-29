@@ -65,7 +65,6 @@ typedef struct _NetIO {
     int io_fd;
     struct ev_io io_ev;
     NetInfo_t    io_net;
-
     DC_link_t    __buf_link;
     NetIOHandler_t *__handler;
 } NetIO_t;
@@ -112,11 +111,13 @@ typedef struct _Net {
     struct ev_loop *ev_loop;
     int              status; //read only
 
+#ifdef _USE_STATIC_BUFFER
     struct {
         DC_buffer_pool_t net_buffer_pool;
         DC_buffer_pool_t net_io_pool;
         DC_mutex_t       buf_lock;
     };
+#endif
 
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;
@@ -132,6 +133,7 @@ typedef struct _Net {
     DC_mutex_t     serv_lock;
 } Net_t;
 
+typedef Net_t NetServer_t;
 /*
  *  do not access members of Net_t instance directly, please
  *  use the following macro definittions or functions to 
@@ -157,11 +159,16 @@ typedef struct _NetDelegate {
     void (*timerout) (Net_t *srv, unsigned int timer);
     int  (*willInitNet) (Net_t *srv);
     void (*willRunNet) (Net_t *srv);
+
+    int (*willAcceptRemoteNetIO) (Net_t *srv, NetIO_t *io);
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
+
     void (*willChangeStatus) (Net_t *srv, int status);
     int  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);
+#ifdef _USE_STATIC_BUFFER
     void (*resourceUsage) (Net_t *srv, int type, float percent);
+#endif
 } NetDelegate_t;
 
 extern int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate);

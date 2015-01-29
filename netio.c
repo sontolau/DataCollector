@@ -41,6 +41,7 @@ static NetIOHandler_t NetProtocolHandler[] = {
 int NetIOInit (NetIO_t *io, const NetInfo_t *info)
 {
     memset (io, '\0', sizeof (NetIO_t));
+
     io->__handler = &NetProtocolHandler[info->net_type];
     io->io_net    = *info;
 
@@ -199,6 +200,9 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
         if (buf->io.__handler->netWriteToIO (&buf->io, 
                                          buf->buffer, 
                                          buf->buffer_length) <= 0) {
+            if (serv->delegate && serv->delegate->willCloseNetIO) {
+                serv->delegate->willCloseNetIO (serv, &buf->io);
+            }
             buf->io.__handler->netDestroyIO (&buf->io);
             ev_io_stop (serv->ev_loop, &buf->ev_io->io_ev);
             if (buf->io.__handler->netAcceptRemoteIO) {
@@ -228,6 +232,9 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         if ((buffer->buffer_length = io->__handler->netReadFromIO (
                                        &buffer->io, buffer->buffer, 
                                        buffer->buffer_size)) <= 0) {
+            if (srv->delegate && srv->delegate->willCloseNetIO) {
+                srv->delegate->willCloseNetIO (srv, io);
+            }
             NetBufferFree (srv, buffer);
             io->__handler->netDestroyIO (io);
             ev_io_stop (srv->ev_loop, w);
@@ -251,19 +258,32 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
+    NetIO_t   tmpio;
 
     NetIO_t *newio = NetIOAlloc (srv);
     if (newio == NULL) {
-        close (accept (io->io_fd, NULL, NULL));
+        io->__handler->netAcceptRemoteIO (&tmpio, io);
+        io->__handler->netDestroyIO (&tmpio);
         return;
     } else {
         memset (newio, '\0', sizeof (NetIO_t));
         if (io->__handler->netAcceptRemoteIO (newio, io) < 0) {
             //TODO: process exception.
+            if (srv->delegate && srv->delegate->willCloseNetIO) {
+                srv->delegate->willCloseNetIO (srv, io);
+            }
             io->__handler->netDestroyIO (io);
             NetIOFree (srv, newio);
             return;
         } else {
+            if (srv->delegate && srv->delegate->willAcceptRemoteNetIO) {
+                if (!srv->delegate->willAcceptRemoteNetIO (srv, newio)) {
+                    io->__handler->netDestroyIO (newio);
+                    NetIOFree (srv, newio);
+                    return;
+                }
+            }
+
             *newio = *io;
             ev_io_init (&newio->io_ev, 
                         NetIOReadCallBack, 
@@ -277,6 +297,7 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 {
     int i;
     NetIO_t *io;
+    NetInfo_t  ioinfo;
 
     serv->net_io = (NetIO_t*)calloc (serv->config->num_net_io, sizeof (NetIO_t));
     if (serv->net_io == NULL) {
@@ -288,8 +309,10 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
         serv->delegate->getNetInfoWithIndex; i++) {
         io = &serv->net_io[i];
 
-        serv->delegate->getNetInfoWithIndex (serv, &io->io_net, i);
-        io->__handler = &NetProtocolHandler[io->io_net.net_type];
+        serv->delegate->getNetInfoWithIndex (serv, &ioinfo, i);
+        NetIOInit (io, &ioinfo);
+
+        //io->__handler = &NetProtocolHandler[io->io_net.net_type];
         if (io->__handler->netCreateIO (io, &io->io_net, serv->config) < 0) {
             return -1;
         } else {
@@ -329,48 +352,58 @@ DC_INLINE int InitNet (Net_t *serv)
         return -1;
     }
 
+#ifdef _USE_STATIC_BUFFER
     if (DC_buffer_pool_init (&serv->net_buffer_pool, 
                              config->max_buffers,
-                             config->buffer_size+sizeof (NetBuffer_t)) < 0 ||
-        DC_buffer_pool_init (&serv->net_io_pool,
-                             config->max_peers,
-                             sizeof (NetIO_t)) < 0) {
-        fprintf (stderr, "DC_buffer_pool_init failed.\n");
+                             config->buffer_size+sizeof (NetBuffer_t)) < 0) {
         return -1;
     }
 
+    if (DC_buffer_pool_init (&serv->net_io_pool,
+                             config->max_peers,
+                             sizeof (NetIO_t)) < 0) {
+        return -1;
+    }
+
+    if (DC_mutex_init (&serv->buf_lock, 0, NULL, NULL) < 0) {
+        return -1;
+    }
+
+#endif
 
     if (DC_queue_init (&serv->request_queue,
                        config->queue_size,
-                       0) < 0 ||
-        DC_queue_init (&serv->reply_queue,
+                       0) < 0) {
+        return -1;
+    }
+        
+    if (DC_queue_init (&serv->reply_queue,
                        config->queue_size,
                        0) < 0) {
-        fprintf (stderr, "DC_queue_init failed.\n");
         return -1;
     }
 
-    if (DC_mutex_init (&serv->buf_lock, 0, NULL, NULL) ||
-        DC_mutex_init (&serv->serv_lock, 1, NULL, NULL)) {
-        fprintf (stderr, "DC_mutex_init failed.\n");
+    if (DC_mutex_init (&serv->serv_lock, 1, NULL, NULL)) {
         return -1;
     }
 
-    if (DC_thread_init (&serv->manager_thread, NULL, 0, NULL) ||
-        DC_thread_init (&serv->reply_thread, NULL, 0, NULL)) {
-        fprintf (stderr, "DC_thread_init failed.\n");
+    if (DC_thread_init (&serv->manager_thread, NULL, 0, NULL)) {
+        return -1;
+    }
+
+    if (DC_thread_init (&serv->reply_thread, NULL, 0, NULL)) {
         return -1;
     } 
 
     if (DC_thread_pool_manager_init (&serv->core_proc_pool, 
                                      serv->config->num_process_threads+1, 
                                      NULL)) {
-        fprintf (stderr, "DC_thread_pool_manager_init failed.\n");
         return -1;
     }
 
     serv->ev_loop = ev_loop_new (0);
     ev_set_userdata (serv->ev_loop, serv);
+
     return 0;
 }
 
@@ -432,11 +465,12 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     ev_loop_destroy (serv->ev_loop);
     DC_queue_destroy (&serv->request_queue);
     DC_queue_destroy (&serv->reply_queue);
+#ifdef _USE_STATIC_BUFFER
     DC_buffer_pool_destroy (&serv->net_io_pool);
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
-
-    DC_mutex_destroy (&serv->serv_lock);
     DC_mutex_destroy (&serv->buf_lock);
+#endif
+    DC_mutex_destroy (&serv->serv_lock);
 
     DC_thread_destroy (&serv->reply_thread);
     DC_thread_destroy (&serv->manager_thread);
@@ -467,11 +501,10 @@ int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)
         }
     }
 
-    if (!(ret = InitNet (serv))) {
+    if (!InitNet (serv)) {
         ret = RunNet (serv);
+        ReleaseNet (serv);
     }
-
-    ReleaseNet (serv);
 
     return ret;
 }
