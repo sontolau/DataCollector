@@ -236,7 +236,7 @@ L4:
 static int __wait_for_idle_thread (DC_thread_pool_manager_t *pool,
                                    long timeout)
 {
-    int ret;
+    int ret = ERR_OK;
 
     while (DC_queue_is_empty (&pool->PRI (thread_queue))) {
         fprintf (stderr, "Waiting to a task stop. ...... \n");

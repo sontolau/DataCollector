@@ -14,8 +14,6 @@ int DC_notifier_init (DC_notifier_t *notif, DC_error_t *error)
         pthread_cond_destroy (&notif->PRI (notif_cond));
         DC_error_set (error, ERR_SYSTEM, ERRSTR(ERR_SYSTEM));
         return ERR_SYSTEM;
-    } else {
-        pthread_mutex_lock (&notif->PRI (notif_mutex));
     }
     
     return ERR_OK;

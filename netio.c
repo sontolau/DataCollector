@@ -81,7 +81,7 @@ DC_INLINE int NetBufferHasNext (Net_t *serv, DC_queue_t *queue)
     ret = DC_queue_is_empty (queue);
     DC_mutex_unlock (&serv->serv_lock);
 
-    return ret;
+    return (!ret);
 }
 
 #define GetNetBufferFromRequestQueue(serv) \
@@ -154,7 +154,8 @@ static void ProcessRequestCore (DC_task_t *task ,void *data)
     NetBuffer_t *buf = NULL;
     int ret = 0;
 
-     while ((buf = GetNetBufferFromRequestQueue (serv))) {
+    printf ("[libdc] Process REQUEST queue ... ... \n");
+    while ((buf = GetNetBufferFromRequestQueue (serv))) {
         //TODO: add code here to process request from remote.
         if (serv->delegate && serv->delegate->processRequest) {
             ret = serv->delegate->processRequest (serv, buf);
@@ -178,6 +179,7 @@ static void NetProcManager (DC_thread_t *thread,
     Net_t *serv = (Net_t*)data;
     int          i = 0;
 
+    printf ("[libdc] Running PROCESS task .....\n");
     for (i=0; i<serv->config->num_process_threads && HasMoreBufferToBeProcessed (serv); i++) {
         DC_thread_pool_manager_run_task (&serv->core_proc_pool, 
                                          ProcessRequestCore, 
@@ -192,6 +194,7 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
     Net_t *serv = (Net_t*)data;
     NetBuffer_t *buf = NULL;;
 
+    printf ("[libdc] Running REPLY task ... ...\n");
     while ((buf = GetNetBufferFromReplyQueue (serv))) {
         if (buf->io.__handler->netWriteToIO (&buf->io, 
                                          buf->buffer, 
@@ -360,7 +363,7 @@ DC_INLINE int InitNet (Net_t *serv)
     } 
 
     if (DC_thread_pool_manager_init (&serv->core_proc_pool, 
-                                     serv->config->num_process_threads, 
+                                     serv->config->num_process_threads+1, 
                                      NULL)) {
         fprintf (stderr, "DC_thread_pool_manager_init failed.\n");
         return -1;
