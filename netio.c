@@ -140,6 +140,7 @@ void NetCommitIOBuffer (Net_t *srv, NetIO_t *io)
     DC_thread_run (&srv->reply_thread, NetProcessReply, srv);
 }
 
+/*
 DC_INLINE void NetSetStatus (Net_t *serv, int status)
 {
     if (serv->delegate && serv->delegate->willChangeStatus) {
@@ -148,7 +149,7 @@ DC_INLINE void NetSetStatus (Net_t *serv, int status)
 
     serv->status = status;
 }
-
+*/
 static void ProcessRequestCore (DC_task_t *task ,void *data)
 {
     Net_t *serv = (Net_t*)data;
@@ -479,7 +480,7 @@ DC_INLINE void ReleaseNet (Net_t *serv)
 
 int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate)
 {
-    int ret;
+    int ret = 0;
     pid_t pid;
 
     serv->config   = config;
