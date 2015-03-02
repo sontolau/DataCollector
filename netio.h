@@ -1,60 +1,53 @@
 #ifndef _PNET_H
 #define _PNET_H
 
-
-#include <unistd.h>
-#include <sys/socket.h>
-#include <sys/un.h>
-#include <net/if.h>
-#include <pthread.h>
+#include "libdc.h"
 
 #include <ev.h>
+#include <openssl/ssl.h>
+#include <openssl/bio.h>
+#include <openssl/err.h>
+#include <openssl/rand.h>
 
 #include "buffer.h"
 #include "queue.h"
 #include "mutex.h"
 #include "thread.h"
-
 enum {
     NET_TCP = 0,
     NET_UDP = 1,
 };
 
+struct _NetIO;
+struct _NetConfig;
+struct _NetAddr;
 
-#ifndef S_ERROR
-#define S_ERROR   (0)
-#endif
+typedef struct _NetAddr {
 
-#ifndef S_OK
-#define S_OK  (!S_ERROR)
-#endif
-
-typedef struct _NetInfo {
-
-#define NET_IO_BIND  (1<<0)
-#define NET_IO_SSL   (1<<1)
+#define NET_F_BIND  (1<<0)
+#define NET_F_IPv6  (1<<1)
+#define NET_F_SSL   (1<<2)
 
     int net_flag;
     int net_type;
     /*
      * if net_port is zero, a unix type socket will be created.
-     * the net_path field must be the path.
+     * the net_addr field must be the path.
      */
     unsigned short net_port;
-    union {
-        unsigned int   net_ip;
-#ifndef UNIX_PATH_MAX
-#define UNIX_PATH_MAX 108
-#endif
-        char           net_path[UNIX_PATH_MAX];
-    };
-} NetInfo_t;
+#define MAX_NET_ADDR_LEN   108
+    char           net_addr[MAX_NET_ADDR_LEN];
 
-struct _NetIO;
-struct _NetConfig;
+    struct {
+        char *cert;
+        char *key;
+    } net_ssl;
+
+} NetAddr_t;
 
 typedef struct _NetIOHandler {
-    int (*netCreateIO) (struct _NetIO*, const NetInfo_t*, struct _NetConfig*);
+    int (*netCreateIO) (struct _NetIO*);
+    int (*willAcceptRemoteIO) (struct _NetIO*);
     int (*netAcceptRemoteIO) (struct _NetIO*,  const struct _NetIO*);
     double (*netReadFromIO) (struct _NetIO*, unsigned char*, unsigned int szbuf);
     double (*netWriteToIO) (const struct _NetIO*, const unsigned char*, unsigned int length);
@@ -62,26 +55,49 @@ typedef struct _NetIOHandler {
 }NetIOHandler_t;
 
 typedef struct _NetIO {
-    int io_fd;
-    struct ev_io io_ev;
-    NetInfo_t    io_net;
-    DC_link_t    __buf_link;
+    int          fd;
+    //int          flag;
+    struct ev_io ev;
+    struct _NetIO *local;
+    NetAddr_t    *addr_info;
+    int          refcount;
+
+    union {
+        struct sockaddr_un      su;
+        struct sockaddr_in      s4;
+        struct sockaddr_in6     s6;
+        struct sockaddr_storage ss;
+    };
+    socklen_t sock_len;
+
+    struct {
+        SSL_CTX *ctx;
+        SSL     *ssl;
+    } ssl;
+
+    DC_mutex_t   PRI(io_lock);
+    DC_link_t    PRI (buf_link);
     NetIOHandler_t *__handler;
 } NetIO_t;
 
-extern int NetIOInit (NetIO_t *io, const NetInfo_t *info);
-#define NetIOCreate(io, info) (io->__handler->netCreateIO (io, info))
-#define NetIOAcceptRemote(io, to) (io->__handler->netAcceptRemoteIO (to, io))
-#define NetIOReadFrom(io, buf, szbuf)   (io->__handler->netReadFromIO (io, buf, szbuf))
-#define NetIOWriteTo(io, buf, len)      (io->__handler->netWriteToIO (io, buf, len))
-#define NetIODestroy(io)                (io->__handler->netDestroyIO(io))
+extern int NetIOInit (NetIO_t *io, const NetAddr_t *info);
+extern NetIO_t *NetIOGet (NetIO_t *io);
+
+#define NetIOCreate(_io) (_io->__handler->netCreateIO (_io))
+#define NetIOAcceptRemote(_io, _to)       (_io->__handler->netAcceptRemoteIO (_to, _io))
+#define NetIOWillAcceptRemote(_io)    (_io->__handler->willAcceptRemoteIO (_io))
+#define NetIOReadFrom(_io, _buf, _szbuf)   (_io->__handler->netReadFromIO (_io, _buf, _szbuf))
+#define NetIOWriteTo(_io, _buf, _len)      (_io->__handler->netWriteToIO (_io, _buf, _len))
+#define NetIODestroy(_io)                (_io->__handler->netDestroyIO(_io))
+#define NetIOLock(_io)    do {DC_mutex_lock (&_io->PRI (io_lock), 0, 0);}while (0)
+#define NetIOUnlock(_io)  do {DC_mutex_unlock (&_io->PRI (io_lock));} while (0)
 
 typedef struct _NetBuffer {
-    NetIO_t      io;
-    NetIO_t      *ev_io;
+    NetIO_t      *io;
     unsigned int buffer_size;
     unsigned int buffer_length;
-    DC_link_t    __link;
+    int          refcount;
+    DC_link_t    PRI (link);
     union {
         unsigned char buffer[0];
     };
@@ -90,14 +106,15 @@ typedef struct _NetBuffer {
 typedef struct _NetConfig {
     char *chdir;
     int  daemon;
-    int  max_peers;
-    int  num_net_io;
+    int  num_listeners;
+
+    int  max_requests;
     int  max_buffers;
     int  num_process_threads;
     unsigned int buffer_size;
     int  queue_size;
     unsigned int timer_interval;
-    int  max_idle_time;
+    //int  max_idle_time;
 } NetConfig_t;
 
 enum {
@@ -109,16 +126,15 @@ enum {
 typedef struct _Net {
     NetIO_t  *net_io;
     struct ev_loop *ev_loop;
-    int              status; //read only
+    int            status; //read only
 
-#ifdef _USE_STATIC_BUFFER
     struct {
         DC_buffer_pool_t net_buffer_pool;
         DC_buffer_pool_t net_io_pool;
         DC_mutex_t       buf_lock;
     };
-#endif
-
+    
+    NetAddr_t      *net_addr_array;
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;
 
@@ -136,7 +152,7 @@ typedef struct _Net {
 typedef Net_t NetServer_t;
 /*
  *  do not access members of Net_t instance directly, please
- *  use the following macro definittions or functions to 
+ *  use the following macro definitions or functions to 
  *  access.
  */
 
@@ -155,7 +171,7 @@ enum {
 };
 
 typedef struct _NetDelegate {
-    void (*getNetInfoWithIndex) (Net_t *srv, NetInfo_t *net, int index);
+    void (*getNetListenerAddressWithIndex) (Net_t *srv, NetAddr_t *net, int index);
     void (*timerout) (Net_t *srv, unsigned int timer);
     int  (*willInitNet) (Net_t *srv);
     void (*willRunNet) (Net_t *srv);
@@ -164,11 +180,9 @@ typedef struct _NetDelegate {
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
 
     void (*willChangeStatus) (Net_t *srv, int status);
-    int  (*processRequest) (Net_t *srv, NetBuffer_t *buf);
+    int  (*processRequest) (Net_t *srv, const NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);
-#ifdef _USE_STATIC_BUFFER
     void (*resourceUsage) (Net_t *srv, int type, float percent);
-#endif
 } NetDelegate_t;
 
 extern int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate);

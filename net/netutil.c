@@ -67,26 +67,36 @@ DC_INLINE long __sendto (int sock, const unsigned char *buf, unsigned int size,
     return szwrite;
 }
 
-DC_INLINE void __net2addr (const NetInfo_t *net, struct sockaddr *addr)
+DC_INLINE void __net2addr (const NetAddr_t *net, struct sockaddr *addr, socklen_t *sklen)
 {
-    if (net->net_port == 0) {
-        ((struct sockaddr_un*)addr)->sun_family = AF_UNIX;
-        strncpy (((struct sockaddr_un*)addr)->sun_path, net->net_path, UNIX_PATH_MAX-1);
-    } else {
-        ((struct sockaddr_in*)addr)->sin_family = AF_INET;
-        ((struct sockaddr_in*)addr)->sin_port   = htons (net->net_port);
-        ((struct sockaddr_in*)addr)->sin_addr.s_addr = net->net_ip;
-    }
-}
+    struct sockaddr_in *s4 = (struct sockaddr_in*)addr;
+    struct sockaddr_un *su = (struct sockaddr_un*)addr;
+    struct sockaddr_in6 *s6= (struct sockaddr_in6*)addr;
 
-DC_INLINE void __addr2net (const struct sockaddr *addr, NetInfo_t *net)
-{
-    if (((struct sockaddr_in*)addr)->sin_family == AF_INET) {
-        net->net_port = ntohs (((struct sockaddr_in*)addr)->sin_port);
-        net->net_ip   = ((struct sockaddr_in*)addr)->sin_addr.s_addr;
-    } else if (((struct sockaddr_un*)addr)->sun_family == AF_UNIX) {
-        net->net_port  = 0;
-        strncpy (net->net_path, ((struct sockaddr_un*)addr)->sun_path, UNIX_PATH_MAX-1);
+    if (net->net_port == 0) {
+        su->sun_family = AF_UNIX;
+        strncpy (su->sun_path, net->net_addr, MAX_NET_ADDR_LEN);
+        *sklen = sizeof (struct sockaddr_un);
+    } else {
+        if (net->net_flag & NET_F_IPv6) {
+            s6->sin6_family = AF_INET6;
+            s6->sin6_port   = htons (net->net_port);
+            if (net->net_addr && strlen (net->net_addr)) {
+                inet_pton (AF_INET6, net->net_addr, &s6->sin6_addr);
+            } else {
+                s6->sin6_addr = in6addr_any;
+            }
+            *sklen = sizeof (struct sockaddr_in6);
+        } else {
+            s4->sin_family = AF_INET;
+            s4->sin_port   = htons (net->net_port);
+            if (net->net_addr && strlen (net->net_addr)) {
+                inet_pton (AF_INET, net->net_addr, &s4->sin_addr);
+            } else {
+                s4->sin_addr.s_addr = INADDR_ANY;
+            }
+            *sklen = sizeof (struct sockaddr_in);
+        }
     }
 }
 

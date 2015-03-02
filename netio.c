@@ -17,6 +17,7 @@ extern NetIO_t     *NetIOAlloc (Net_t *srv);
 extern void NetIOFree (Net_t *srv, NetIO_t *io);
 extern void NetCloseIO (Net_t *srv, NetIO_t *io);
 
+
 #include "net/nettcp.c"
 #include "net/netudp.c"
 #include "net/netcomm.c"
@@ -24,6 +25,7 @@ extern void NetCloseIO (Net_t *srv, NetIO_t *io);
 static NetIOHandler_t NetProtocolHandler[] = {
     [NET_TCP] = {
         .netCreateIO          = tcpCreateIO,
+        .willAcceptRemoteIO   = tcpWillAcceptRemoteIO,
         .netAcceptRemoteIO    = tcpAcceptRemoteIO,
         .netReadFromIO        = tcpReadFromIO,
         .netWriteToIO         = tcpWriteToIO,
@@ -31,19 +33,19 @@ static NetIOHandler_t NetProtocolHandler[] = {
     },
     [NET_UDP] = {
         .netCreateIO          = udpCreateIO,
-        .netAcceptRemoteIO    = NULL,
+        .willAcceptRemoteIO   = udpWillAcceptRemoteIO,
+        .netAcceptRemoteIO    = udpAcceptRemoteIO,
         .netReadFromIO        = udpReadFromIO,
         .netWriteToIO         = udpWriteToIO,
         .netDestroyIO         = udpDestroyIO,
     }
 };
 
-int NetIOInit (NetIO_t *io, const NetInfo_t *info)
+int NetIOInit (NetIO_t *io, const NetAddr_t *info)
 {
-    memset (io, '\0', sizeof (NetIO_t));
-
     io->__handler = &NetProtocolHandler[info->net_type];
-    io->io_net    = *info;
+    __net2addr (info, (struct sockaddr*)&io->ss, &io->sock_len);
+    io->addr_info = (NetAddr_t*)info;
 
     return 0;
 }
@@ -103,11 +105,11 @@ NetBuffer_t *NetAllocIOBuffer (Net_t *srv, NetIO_t *io)
 
     buf = NetBufferAlloc (srv);
     if (buf) {
-        buf->__link.next = NULL;
-        buf->__link.prev = NULL;
+        buf->PRI (link).next = NULL;
+        buf->PRI (link).prev = NULL;
  
-        buf->io          = *io;
-        DC_link_add (io->__buf_link.prev, &buf->__link);
+        buf->io          = NetIOGet (io);
+        DC_link_add (io->PRI (buf_link).prev, &buf->PRI (link));
     }
 
     return buf;
@@ -116,7 +118,8 @@ NetBuffer_t *NetAllocIOBuffer (Net_t *srv, NetIO_t *io)
 void NetFreeIOBuffer (Net_t *srv, NetBuffer_t *buf)
 {
     if (buf) {
-        DC_link_remove (&buf->__link);
+        DC_link_remove (&buf->PRI (link));
+        NetIOFree (srv, buf->io);
         NetBufferFree (srv, buf);
     }
 }
@@ -127,17 +130,21 @@ void NetCommitIOBuffer (Net_t *srv, NetIO_t *io)
     register DC_link_t *linkptr, *tmpptr;
     NetBuffer_t        *buffer;
 
-    linkptr = io->__buf_link.next;
-    while (linkptr && linkptr != &io->__buf_link) {
+    NetIOLock (io);
+    linkptr = io->PRI (buf_link).next;
+    while (linkptr && linkptr != &io->PRI (buf_link)) {
         tmpptr = linkptr->next;
         DC_link_remove (linkptr);
 
-        buffer = DC_link_container_of (linkptr, NetBuffer_t, __link);
+        buffer = DC_link_container_of (linkptr, NetBuffer_t, PRI (link));
         PutNetBufferIntoReplyQueue (srv, buffer);
         linkptr = tmpptr;
     }
+    NetIOUnlock (io);
 
-    DC_thread_run (&srv->reply_thread, NetProcessReply, srv);
+    if (DC_thread_get_status (((DC_thread_t*)&srv->reply_thread)) == THREAD_STAT_IDLE) {
+        DC_thread_run (&srv->reply_thread, NetProcessReply, srv);
+    }
 }
 
 /*
@@ -154,15 +161,18 @@ static void ProcessRequestCore (DC_task_t *task ,void *data)
 {
     Net_t *serv = (Net_t*)data;
     NetBuffer_t *buf = NULL;
-    int ret = 0;
+    //int ret = 0;
 
     printf ("[libdc] Process REQUEST queue ... ... \n");
     while ((buf = GetNetBufferFromRequestQueue (serv))) {
         //TODO: add code here to process request from remote.
         if (serv->delegate && serv->delegate->processRequest) {
-            ret = serv->delegate->processRequest (serv, buf);
+            serv->delegate->processRequest (serv, buf);
         }
 
+        NetIOFree (serv, buf->io);
+        NetBufferFree (serv, buf);
+/*
         if (ret) {
             PutNetBufferIntoReplyQueue (serv, buf);
             if (DC_thread_get_status (((DC_thread_t*)&serv->reply_thread)) == THREAD_STAT_IDLE) {
@@ -171,8 +181,8 @@ static void ProcessRequestCore (DC_task_t *task ,void *data)
         } else {
             NetBufferFree (serv, buf);
         }
+*/
     }
-
 }
 
 static void NetProcManager (DC_thread_t *thread,
@@ -198,18 +208,18 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
 
     printf ("[libdc] Running REPLY task ... ...\n");
     while ((buf = GetNetBufferFromReplyQueue (serv))) {
-        if (buf->io.__handler->netWriteToIO (&buf->io, 
-                                         buf->buffer, 
-                                         buf->buffer_length) <= 0) {
+        if (NetIOWriteTo (buf->io, buf->buffer, buf->buffer_length) <= 0) {
             if (serv->delegate && serv->delegate->willCloseNetIO) {
-                serv->delegate->willCloseNetIO (serv, &buf->io);
+                serv->delegate->willCloseNetIO (serv, buf->io);
             }
-            buf->io.__handler->netDestroyIO (&buf->io);
-            ev_io_stop (serv->ev_loop, &buf->ev_io->io_ev);
-            if (buf->io.__handler->netAcceptRemoteIO) {
-                NetIOFree (serv, buf->ev_io);
-            }
+            NetIODestroy (buf->io);
+
+//            ev_io_stop (serv->ev_loop, &buf->ev_io->ev);
+//            if (buf->io.__handler->willAcceptRemoteIO) {
+//                NetIOFree (serv, buf->ev_io);
+//            }
         }
+        NetIOFree (serv, buf->io);
         NetBufferFree (serv, buf);
     }
 }
@@ -218,37 +228,51 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
+    NetIO_t *newio = NULL;
     NetBuffer_t *buffer = NULL;
-    
-    buffer = NetBufferAlloc (srv);
-    if (buffer == NULL) {
+  
+    if (!(buffer = NetBufferAlloc (srv))) {
         //TODO: process exception.
-        fprintf (stderr, "Can't allocate buffer.\n");
-        return;
-    } else {
-        buffer->buffer_size   = srv->config->buffer_size;
-        buffer->buffer_length = 0;
-        buffer->io            = *io;
-        buffer->ev_io         = io;
-        if ((buffer->buffer_length = io->__handler->netReadFromIO (
-                                       &buffer->io, buffer->buffer, 
-                                       buffer->buffer_size)) <= 0) {
-            if (srv->delegate && srv->delegate->willCloseNetIO) {
-                srv->delegate->willCloseNetIO (srv, io);
-            }
+EXCEPT:
+        if (buffer) {
+            if (buffer->io) NetIOFree (srv, buffer->io);
             NetBufferFree (srv, buffer);
-            io->__handler->netDestroyIO (io);
-            ev_io_stop (srv->ev_loop, w);
-            if (io->__handler->netAcceptRemoteIO) {
-                NetIOFree (srv, io);
-            }
-            //TODO: process exception.
-            return;
+        }
+
+        return;
+    }
+
+    if (!NetIOWillAcceptRemote (io)) {
+        if ((newio = NetIOAlloc (srv))) {
+            NetIOInit (newio, io->addr_info);
+            newio->fd = io->fd;
+            newio->local = io;
+            io        = newio;
         } else {
-            PutNetBufferIntoRequestQueue (srv, buffer);
-            if (DC_thread_get_status (((DC_thread_t*)&srv->manager_thread)) == THREAD_STAT_IDLE) {
-                DC_thread_run (&srv->manager_thread, NetProcManager, srv);
-            }
+            //TODO: process exception.
+            goto EXCEPT;
+        }
+    } else {
+        io = NetIOGet (io);
+    }
+
+    buffer->buffer_size   = srv->config->buffer_size;
+    buffer->buffer_length = 0;
+    buffer->io            = io;
+    if ((buffer->buffer_length = NetIOReadFrom  (io, 
+                                                 buffer->buffer, 
+                                                 buffer->buffer_size)) <= 0) {
+        if (srv->delegate && srv->delegate->willCloseNetIO) {
+            srv->delegate->willCloseNetIO (srv, io);
+        }
+
+        NetIODestroy (io);
+        ev_io_stop (srv->ev_loop, w);
+        goto EXCEPT;
+    } else {
+        PutNetBufferIntoRequestQueue (srv, buffer);
+        if (DC_thread_get_status (((DC_thread_t*)&srv->manager_thread)) == THREAD_STAT_IDLE) {
+            DC_thread_run (&srv->manager_thread, NetProcManager, srv);
         }
     }
 }
@@ -259,37 +283,41 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
-    NetIO_t   tmpio;
+    //NetIO_t   tmpio;
 
     NetIO_t *newio = NetIOAlloc (srv);
     if (newio == NULL) {
-        io->__handler->netAcceptRemoteIO (&tmpio, io);
-        io->__handler->netDestroyIO (&tmpio);
+        //TODO: process exception.
+        //io->__handler->netAcceptRemoteIO (&tmpio, io);
+        //io->__handler->netDestroyIO (&tmpio);
+
         return;
     } else {
-        memset (newio, '\0', sizeof (NetIO_t));
-        if (io->__handler->netAcceptRemoteIO (newio, io) < 0) {
+        NetIOInit (newio, io->addr_info);
+        
+        if (NetIOAcceptRemote (io, newio) < 0) {
+        //if (io->__handler->netAcceptRemoteIO (newio, io) < 0) {
             //TODO: process exception.
             if (srv->delegate && srv->delegate->willCloseNetIO) {
                 srv->delegate->willCloseNetIO (srv, io);
             }
-            io->__handler->netDestroyIO (io);
+            NetIODestroy (io);
             NetIOFree (srv, newio);
             return;
         } else {
-            if (srv->delegate && srv->delegate->willAcceptRemoteNetIO) {
+            if (srv->delegate && srv->delegate->willAcceptRemoteNetIO ) {
                 if (!srv->delegate->willAcceptRemoteNetIO (srv, newio)) {
-                    io->__handler->netDestroyIO (newio);
+                    NetIODestroy (newio);
                     NetIOFree (srv, newio);
                     return;
                 }
             }
-
-            *newio = *io;
-            ev_io_init (&newio->io_ev, 
+            newio->local   = io;
+            newio->ev.data = newio;
+            ev_io_init (&newio->ev, 
                         NetIOReadCallBack, 
-                        newio->io_fd, EV_READ);
-            ev_io_start (srv->ev_loop, &newio->io_ev);
+                        newio->fd, EV_READ);
+            ev_io_start (srv->ev_loop, &newio->ev);
         }
     }
 }
@@ -298,32 +326,37 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 {
     int i;
     NetIO_t *io;
-    NetInfo_t  ioinfo;
+    //NetAddr_t  ioinfo;
 
-    serv->net_io = (NetIO_t*)calloc (serv->config->num_net_io, sizeof (NetIO_t));
+    serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_listeners, sizeof (NetAddr_t));
+    if (serv->net_addr_array == NULL) {
+        return -1;
+    }
+
+    serv->net_io = (NetIO_t*)calloc (serv->config->num_listeners, sizeof (NetIO_t));
     if (serv->net_io == NULL) {
         return -1;
     }
 
-    for (i=0; i<serv->config->num_net_io &&
+    for (i=0; i<serv->config->num_listeners &&
         serv->delegate &&
-        serv->delegate->getNetInfoWithIndex; i++) {
+        serv->delegate->getNetListenerAddressWithIndex; i++) {
         io = &serv->net_io[i];
 
-        serv->delegate->getNetInfoWithIndex (serv, &ioinfo, i);
-        NetIOInit (io, &ioinfo);
+        serv->delegate->getNetListenerAddressWithIndex (serv, &serv->net_addr_array[i], i);
+        NetIOInit (io, &serv->net_addr_array[i]);
 
-        //io->__handler = &NetProtocolHandler[io->io_net.net_type];
-        if (io->__handler->netCreateIO (io, &io->io_net, serv->config) < 0) {
+        //io->__handler = &NetProtocolHandler[io->addr_info.net_type];
+        if (NetIOCreate (io) < 0) {
             return -1;
         } else {
-            if (io->__handler->netAcceptRemoteIO) {
-                ev_io_init (&io->io_ev, NetIOAcceptCallBack, io->io_fd, EV_READ);
+            if (NetIOWillAcceptRemote (io)) {
+                ev_io_init (&io->ev, NetIOAcceptCallBack, io->fd, EV_READ);
             } else {
-                ev_io_init (&io->io_ev, NetIOReadCallBack, io->io_fd, EV_READ);
+                ev_io_init (&io->ev, NetIOReadCallBack, io->fd, EV_READ);
             }
-            ev_io_start (serv->ev_loop, &io->io_ev);
-            io->io_ev.data = io;
+            ev_io_start (serv->ev_loop, &io->ev);
+            io->ev.data = io;
         }
     }
 
@@ -334,13 +367,14 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
 {
     int i;
 
-    for (i=0; i<serv->config->num_net_io &&
+    for (i=0; i<serv->config->num_listeners &&
                 serv->net_io; i++) {
-        serv->net_io[i].__handler->netDestroyIO (&serv->net_io[i]);
-        ev_io_stop (serv->ev_loop, &serv->net_io[i].io_ev);
+        NetIODestroy (((NetIO_t*)&serv->net_io[i]));
+        ev_io_stop (serv->ev_loop, &serv->net_io[i].ev);
     }
 
     if (serv->net_io) free (serv->net_io);
+    if (serv->net_addr_array) free (serv->net_addr_array);
 }
 
 
@@ -353,15 +387,14 @@ DC_INLINE int InitNet (Net_t *serv)
         return -1;
     }
 
-#ifdef _USE_STATIC_BUFFER
-    if (DC_buffer_pool_init (&serv->net_buffer_pool, 
+    if (config->max_buffers && DC_buffer_pool_init (&serv->net_buffer_pool, 
                              config->max_buffers,
                              config->buffer_size+sizeof (NetBuffer_t)) < 0) {
         return -1;
     }
 
-    if (DC_buffer_pool_init (&serv->net_io_pool,
-                             config->max_peers,
+    if (config->max_requests && DC_buffer_pool_init (&serv->net_io_pool,
+                             config->max_requests,
                              sizeof (NetIO_t)) < 0) {
         return -1;
     }
@@ -369,8 +402,6 @@ DC_INLINE int InitNet (Net_t *serv)
     if (DC_mutex_init (&serv->buf_lock, 0, NULL, NULL) < 0) {
         return -1;
     }
-
-#endif
 
     if (DC_queue_init (&serv->request_queue,
                        config->queue_size,
@@ -397,7 +428,8 @@ DC_INLINE int InitNet (Net_t *serv)
     } 
 
     if (DC_thread_pool_manager_init (&serv->core_proc_pool, 
-                                     serv->config->num_process_threads+1, 
+                                     serv->config->num_process_threads?
+                                     serv->config->num_process_threads:1, 
                                      NULL)) {
         return -1;
     }
@@ -466,11 +498,9 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     ev_loop_destroy (serv->ev_loop);
     DC_queue_destroy (&serv->request_queue);
     DC_queue_destroy (&serv->reply_queue);
-#ifdef _USE_STATIC_BUFFER
     DC_buffer_pool_destroy (&serv->net_io_pool);
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
     DC_mutex_destroy (&serv->buf_lock);
-#endif
     DC_mutex_destroy (&serv->serv_lock);
 
     DC_thread_destroy (&serv->reply_thread);

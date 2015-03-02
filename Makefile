@@ -1,7 +1,7 @@
 TESTAPP=test
 LIB=libdc.a
 CC=cc
-CFLAGS=-fPIC -Wall -g -D_USE_STATIC_BUFFER
+CFLAGS=-fPIC -Wall -g
 
 OBJS=error.o link.o list.o hash.o dict.o  queue.o buffer.o notifier.o mutex.o thread.o netio.o
 INCDIRS=-I./
