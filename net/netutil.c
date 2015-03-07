@@ -67,11 +67,12 @@ DC_INLINE long __sendto (int sock, const unsigned char *buf, unsigned int size,
     return szwrite;
 }
 
-DC_INLINE void __net2addr (const NetAddr_t *net, struct sockaddr *addr, socklen_t *sklen)
+DC_INLINE void __net2addr (const NetAddr_t *net, NetSocketAddr_t *addr)
 {
-    struct sockaddr_in *s4 = (struct sockaddr_in*)addr;
-    struct sockaddr_un *su = (struct sockaddr_un*)addr;
-    struct sockaddr_in6 *s6= (struct sockaddr_in6*)addr;
+    struct sockaddr_in *s4 = (struct sockaddr_in*)&addr->s4;
+    struct sockaddr_un *su = (struct sockaddr_un*)&addr->su;
+    struct sockaddr_in6 *s6= (struct sockaddr_in6*)&addr->s6;
+    socklen_t *sklen = &addr->sock_length;
 
     if (net->net_port == 0) {
         su->sun_family = AF_UNIX;
@@ -100,6 +101,49 @@ DC_INLINE void __net2addr (const NetAddr_t *net, struct sockaddr *addr, socklen_
     }
 }
 
+DC_INLINE long __ssl_read (SSL *ssl,unsigned char *buf, unsigned int szbuf)
+{
+    long szread = 0;
+
+   do {
+       szread = SSL_read (ssl, buf, szbuf);
+       switch (SSL_get_error (ssl, (int)szread)) {
+           case SSL_ERROR_NONE:
+               return szread;
+           case SSL_ERROR_WANT_READ:
+               break;
+           default:
+               return -1;
+       }
+   } while (1);
+
+   return 0;
+}
+
+DC_INLINE long __ssl_write (SSL *ssl, const unsigned char *buf, unsigned int szbuf)
+{
+    long szwrite = 0;
+
+    do {
+        if (SSL_get_shutdown (ssl) & SSL_RECEIVED_SHUTDOWN) return -1;
+
+        szwrite = SSL_write (ssl, buf, szbuf);
+        switch (SSL_get_error (ssl, (int)szwrite)) {
+            case SSL_ERROR_NONE:
+                return szwrite;
+            case SSL_ERROR_WANT_WRITE:
+            case SSL_ERROR_WANT_READ:
+                break;
+            case SSL_ERROR_ZERO_RETURN:
+                return -1;
+            default:
+                return -1;
+        }
+    } while (1);
+
+    return -1;
+}
+
 DC_INLINE void __set_nonblock (int fd)
 {
     int flag = 0;
@@ -113,5 +157,14 @@ DC_INLINE void __set_nonblock (int fd)
     fcntl (fd, F_SETFL, &flag);
 }
 
+DC_INLINE void __NOW (const char *timefmt, char buf[], int szbuf)
+{
+    time_t now;
+    struct tm *tmptr;
 
+    time (&now);
+    tmptr = localtime (&now);
+
+    strftime (buf, szbuf, timefmt, tmptr);
+}
 #endif

@@ -61,4 +61,8 @@ typedef void* HDC;
 #define __INOUT__
 #endif
 
+#ifndef Dlog
+#define Dlog(_fmt, ...)  fprintf(stderr, _fmt, ## __VA_ARGS__)
+#endif
+
 #endif

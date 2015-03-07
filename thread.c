@@ -17,30 +17,22 @@ static void *__thread_cb (void *data)
     int ret;
 
     do {
-        ret = DC_notifier_wait (&thread->PRI (notif_object), thread->PRI (wait_ms));
-        DC_mutex_lock (&thread->PRI (thread_lock), 0, 1);
-        if (ret < 0) {
-            fprintf (stderr, "[libdc] DC_notifier_wait failed\n");
-            break;
-        } else if (ret == 0 && (!thread->PRI (exit_flag))) {
+        ret = DC_notifier_wait (&thread->PRI (notif_object), 0);
+        if (ret == 0 && (!thread->PRI (exit_flag))) {
             __set_thread_status (thread, THREAD_STAT_RUNNING);
             if (thread->PRI (thread_cb)) {
                 thread->PRI (thread_cb) ((struct _DC_thread*)thread, thread->user_data);
             }
             __set_thread_status (thread, THREAD_STAT_IDLE);
-        } else if (ret > 0) { //wait timed out.
-            __set_thread_status (thread, THREAD_STAT_WAIT_TIMEOUT);
-        }
-        DC_mutex_unlock (&thread->PRI (thread_lock));
+            DC_mutex_unlock (&thread->PRI (thread_lock));
+        } 
     } while (!thread->PRI (exit_flag));
     __set_thread_status (thread, THREAD_STAT_EXITED);
-    DC_mutex_unlock (&thread->PRI (thread_lock));
     return __thread_cb;
 }
 
 int DC_thread_init (DC_thread_t *thread,
                     DC_thread_status_func_t status_cb,
-                    long time_wait,
                     DC_error_t *error)
 {
     int ret = ERR_OK;
@@ -50,26 +42,20 @@ int DC_thread_init (DC_thread_t *thread,
     thread->error = error;
     thread->PRI (thread_status) = THREAD_STAT_IDLE;
     thread->PRI (thread_status_cb) = status_cb;
-    thread->PRI (wait_ms)          = time_wait;
-    if ((ret = DC_notifier_init (&thread->PRI (notif_object), error))) {
-L0:
+    if ((ret = DC_notifier_init (&thread->PRI (notif_object), 
+                                 &thread->PRI (thread_lock), 
+                                 error))) {
         return ret;
     }
-
-    if ((ret = DC_mutex_init (&thread->PRI (thread_lock), 0, NULL, error))) {
-L1:
-        DC_notifier_destroy (&thread->PRI (notif_object));
-        goto L0;
-    }
-
 #ifdef OS_WINDOWS
 #else
     if (pthread_create (&thread->PRI (thread_handle), NULL, __thread_cb, thread)) {
-        DC_error_set (error, ERR_SYSTEM, ERRSTR(ERR_SYSTEM));
+        DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
         ret = ERR_SYSTEM;
-        goto L1;
+        DC_notifier_destroy (&thread->PRI (notif_object));
+        return  ret;
     } else {
-        usleep (1);
+        usleep (100);
     }
 #endif
 
@@ -82,13 +68,13 @@ int DC_thread_run (DC_thread_t *thread,
 {
     int retcode = ERR_OK;
 
-    if ((retcode = DC_mutex_lock (&thread->PRI (thread_lock), 0, 1))) {
+    if ((retcode = DC_mutex_lock (&thread->PRI (thread_lock), 0, 0))) {
         return retcode;
     }
     thread->PRI (thread_cb) = thread_cb;
     thread->user_data       = data;
-    DC_notifier_notify_all (&thread->PRI (notif_object));
     DC_mutex_unlock (&thread->PRI (thread_lock));
+    DC_notifier_notify (&thread->PRI (notif_object));
 
     return retcode;
 }
@@ -106,7 +92,6 @@ void DC_thread_destroy (DC_thread_t *thread)
     pthread_join (thread->PRI (thread_handle), NULL);
 #endif
     DC_notifier_destroy (&thread->PRI (notif_object));
-    DC_mutex_destroy    (&thread->PRI (thread_lock));
 }
 
 
@@ -127,6 +112,7 @@ static void __thread_pool_status_cb (DC_thread_t *thread, void *userdata, int st
 
 static void __thread_task (DC_thread_t *thread, void *data)
 {
+    int num_wait = 0;
     DC_task_t *task = (DC_task_t*)data;
     DC_thread_pool_manager_t *manager = task->PRI (pool_manager);
     if (task->will_process) {
@@ -141,12 +127,20 @@ static void __thread_task (DC_thread_t *thread, void *data)
         task->did_process (task, task->task_data);
     }
 
-    DC_mutex_lock (&manager->PRI (pool_mutex), 0, 0);
+    DC_mutex_lock (&manager->PRI (pool_mutex), 0, 1);
+    num_wait = manager->PRI (num_wait);
     DC_queue_push (&manager->PRI (thread_queue), (qobject_t)task->PRI (task_thread), 0);
     DC_mutex_unlock (&manager->PRI (pool_mutex));
-
-    fprintf (stderr, "Free task resource.\n");
+    /*
+    while (num_wait && num_wait >= manager->PRI (num_wait)) {
+        fprintf (stderr, "[libdc] notify other listeners to run.\n");
+        DC_notifier_notify (&manager->PRI (task_notifier));
+        usleep (100);//make other threads run.
+        //DC_mutex_lock (&manager->PRI (pool_mutex), 0, 1);
+    }
+*/
     DC_notifier_notify (&manager->PRI (task_notifier));
+    //DC_mutex_unlock (&manager->PRI (pool_mutex));
 }
 
 
@@ -179,6 +173,7 @@ int DC_thread_pool_manager_init (DC_thread_pool_manager_t *pool,
     pool->max_threads = maxthreads;
     pool->error       = error;
 
+    pool->PRI (num_wait) = 0;
     if ((ret = DC_queue_init (&pool->PRI (thread_queue), maxthreads, 0))) {
 L0:
         return ret;
@@ -191,40 +186,34 @@ L1:
         goto L0;
     }
 
-    if ((ret = DC_mutex_init (&pool->PRI (pool_mutex), 0, NULL, error))) {
+    if ((ret = DC_notifier_init (&pool->PRI (task_notifier), 
+                                 &pool->PRI (pool_mutex),
+                                 pool->error))) {
 L2:
         DC_queue_destroy (&pool->PRI (task_queue));
         goto L1;
     }
 
-    if ((ret = DC_notifier_init (&pool->PRI (task_notifier), pool->error))) {
-L3:
-        DC_mutex_destroy (&pool->PRI (pool_mutex));
-        goto L2;
-    }
-
     if ((ret = DC_thread_init (&pool->PRI (manager_thread), 
                                __thread_pool_status_cb,
-                               0,
                                error))) {
-L4:
+L3:
         DC_notifier_destroy (&pool->PRI (task_notifier));
-        goto L3;
-    } else {
+        goto L2;
+    } /*else {
         DC_thread_run (&pool->PRI (manager_thread),
                        __pool_manager_cb,
                        (void*)pool);
-    }
+    }*/
 
     if (!(pool->PRI (thread_pool) = (DC_thread_t*)calloc (maxthreads, sizeof (DC_thread_t)))) {
-        DC_error_set (error, (ret = ERR_SYSTEM), ERRSTR(ERR_SYSTEM));
-        goto L4;
+        DC_error_set (error, (ret = ERR_SYSTEM), STRERR(ERR_SYSTEM));
+        goto L3;
     }
     
     for (i=0; i<maxthreads; i++) {
         DC_thread_init (&pool->PRI (thread_pool)[i], 
                         __thread_pool_status_cb,
-                        0,
                         error);
         DC_queue_push (&pool->PRI (thread_queue), (qobject_t)&pool->PRI (thread_pool)[i], 1);
     }
@@ -237,10 +226,12 @@ static int __wait_for_idle_thread (DC_thread_pool_manager_t *pool,
                                    long timeout)
 {
     int ret = ERR_OK;
-
+    
     while (DC_queue_is_empty (&pool->PRI (thread_queue))) {
         fprintf (stderr, "Waiting to a task stop. ...... \n");
+        pool->PRI (num_wait)++;
         ret = DC_notifier_wait (&pool->PRI (task_notifier), timeout);
+        pool->PRI (num_wait)--;
         if (ret != ERR_OK) {
             break;
         }
@@ -262,13 +253,14 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
     DC_task_t   *task    = NULL;
 
     if (!(task = (DC_task_t*)calloc (1, sizeof (DC_task_t)))) {
-        DC_error_set (pool->error, ERR_SYSTEM, ERRSTR (ERR_SYSTEM));
+        DC_error_set (pool->error, ERR_SYSTEM, STRERR (ERR_SYSTEM));
         return ERR_SYSTEM;
     }
     
+    DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
     ret = __wait_for_idle_thread (pool, wait);
     if (ret == ERR_OK) {
-        DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
+        //DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
         thrdptr = (DC_thread_t*)DC_queue_pop (&pool->PRI (thread_queue));
 
         task->PUB (task)        = task_core;
@@ -280,12 +272,16 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
         task->PRI (pool_manager)= pool;
 
         DC_queue_push (&pool->PRI (task_queue), (qobject_t)task, 0);
-        DC_thread_run (&pool->PRI (manager_thread),
-                       __pool_manager_cb,
-                       pool);
         DC_mutex_unlock (&pool->PRI (pool_mutex));
+        if (DC_thread_get_status (((DC_thread_t*)&pool->PRI (manager_thread)))
+                                                     != THREAD_STAT_RUNNING) {
+            DC_thread_run (&pool->PRI (manager_thread),
+                           __pool_manager_cb,
+                           pool);
+        }
     } else {
         free (task);
+        DC_mutex_unlock (&pool->PRI (pool_mutex));
     }
     return ret;
 }
@@ -307,6 +303,5 @@ void DC_thread_pool_manager_destroy (DC_thread_pool_manager_t *pool)
    DC_queue_destroy (&pool->PRI (task_queue));
    DC_queue_destroy (&pool->PRI (thread_queue));
    free (pool->PRI (thread_pool));
-   DC_mutex_destroy (&pool->PRI (pool_mutex));
 }
 

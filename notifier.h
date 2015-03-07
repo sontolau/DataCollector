@@ -3,17 +3,19 @@
 
 #include "libdc.h"
 #include "error.h"
+#include "mutex.h"
 
 DC_CPP (extern "C" {)
 
 typedef struct _notifier {
     DC_error_t      PUB (*error);
-    pthread_mutex_t PRI (notif_mutex);
+    //pthread_mutex_t* PRI (notif_mutex);
+    DC_mutex_t*    PRI (notif_object);
     pthread_cond_t  PRI (notif_cond);
 } DC_notifier_t;
 
 
-extern int DC_notifier_init (DC_notifier_t *notif, DC_error_t *error);
+extern int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *error);
 
 //extern int DC_notifier_wait_to_be_done (DC_notifier_t *notif);
 

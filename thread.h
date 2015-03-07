@@ -29,7 +29,6 @@ typedef struct _DC_thread {
     //private fields.
     DC_notifier_t   PRI (notif_object);
     int             PRI (thread_status);
-    long            PRI (wait_ms);
     volatile int    PRI (exit_flag);
     DC_mutex_t      PRI (thread_lock);
 #ifdef OS_WINDOWS
@@ -48,7 +47,6 @@ typedef struct _DC_thread {
 
 extern int DC_thread_init (DC_thread_t *thread,
                            DC_thread_status_func_t status_cb,
-                           long wait,
                            DC_error_t *error);
 
 extern int DC_thread_run (DC_thread_t *thread,
@@ -74,6 +72,7 @@ typedef struct _DC_task {
 typedef struct _DC_thread_pool_manager {
     int           PUB (max_threads);
     DC_error_t    *PUB (error);
+    int           PRI (num_wait);
     DC_notifier_t PRI (task_notifier);
     DC_queue_t    PRI (thread_queue);
     DC_queue_t    PRI (task_queue);

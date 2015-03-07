@@ -16,12 +16,12 @@ int DC_mutex_init (DC_mutex_t *mutex,
 #else
     if (rwflag) {
         if (pthread_rwlock_init (RWLOCK(mutex->PRI (mutex_lock)), NULL)) {
-            DC_error_set (error, ERR_SYSTEM, ERRSTR(ERR_SYSTEM));
+            DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
             return ERR_SYSTEM;
         }
     } else {
         if (pthread_mutex_init (PMUTEX(mutex->PRI (mutex_lock)), NULL)) {
-            DC_error_set (error, ERR_SYSTEM, ERRSTR(ERR_SYSTEM));
+            DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
             return ERR_SYSTEM;
         }
     }
@@ -54,7 +54,7 @@ int DC_mutex_lock (DC_mutex_t *mutex, int type, int wait)
 #endif
     if (ret) {
         ret = ERR_SYSTEM;
-        DC_error_set (mutex->error, ERR_SYSTEM, ERRSTR (ERR_SYSTEM));
+        DC_error_set (mutex->error, ERR_SYSTEM, STRERR (ERR_SYSTEM));
     } else {
         ret = ERR_OK;
     }

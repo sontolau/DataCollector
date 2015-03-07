@@ -1,142 +1,138 @@
-
-DC_INLINE void SetNonblockFD (int fd)
-{
-    int flag = 0;
-
-    if ((flag = fcntl (fd, F_GETFL)) < 0) {
-        return;
-    }
-
-    flag |= O_NONBLOCK;
-
-    fcntl (fd, F_SETFL, &flag);
-}
-
 #define BufferAlloc(srv, bufptr, type, pool, sz) \
     do {\
         DC_buffer_t *__buf = NULL;\
-        DC_mutex_lock (&srv->buf_lock, 0, 1);\
         __buf = DC_buffer_pool_alloc (&pool, sz);\
-        DC_mutex_unlock (&srv->buf_lock);\
         bufptr = (__buf?((type*)__buf->data):NULL);\
     } while (0)
 
 #define BufferFree(srv, buf, pool) \
     do {\
         DC_buffer_t *__buf = (DC_buffer_t*)DC_buffer_from (buf);\
-        DC_mutex_lock (&srv->buf_lock, 0, 1);\
         DC_buffer_pool_free (&pool, __buf);\
-        DC_mutex_unlock (&srv->buf_lock);\
     } while (0)
 
-NetBuffer_t *NetBufferAlloc (Net_t *srv)
+NetBuffer_t *NetAllocBuffer (Net_t *srv)
 {
     NetBuffer_t *buf = NULL;
+
     if (srv->config->max_buffers) {
+        NetLockContext (srv);
         BufferAlloc (srv, buf, NetBuffer_t, srv->net_buffer_pool, srv->config->buffer_size);
         if (buf) {
-            memset (buf->buffer, '\0', srv->config->buffer_size);
-            buf->refcount = 1;
-        } else {
-            return NULL;
-        }
-
-        if (srv->delegate->resourceUsage) {
-            srv->delegate->resourceUsage (srv, 
+            if (srv->delegate->resourceUsage) {
+                srv->delegate->resourceUsage (srv, 
                                 RES_BUFFER, 
                                 DC_buffer_pool_get_usage (&srv->net_buffer_pool));
+            }
         }
+        NetUnlockContext (srv);
     } else {
-        if ((buf = (NetBuffer_t*)calloc (1, 
-                   sizeof (NetBuffer_t) + srv->config->buffer_size))) {
-            buf->refcount = 1;
-        }
+        buf = (NetBuffer_t*)calloc (1, 
+              sizeof (NetBuffer_t) + srv->config->buffer_size);
     }
+
+    if (buf) {
+        buf->io          = NULL;
+        buf->buffer_size = srv->config->buffer_size;
+        buf->buffer_length = 0;
+        memset (buf->buffer, '\0', buf->buffer_size);
+    }
+    Dlog ("[libdc] allocate system buffer: %p\n", buf);
 
     return buf;
 }
 
-void NetBufferFree (Net_t *srv, NetBuffer_t *buf)
+void NetFreeBuffer (Net_t *srv, NetBuffer_t *buf)
 {
-    buf->refcount--;
-    if (buf->refcount <= 0) {
-        if (srv->config->max_buffers) {
-            BufferFree (srv, buf, srv->net_buffer_pool);
-            if (srv->delegate->resourceUsage) {
-                srv->delegate->resourceUsage (srv, 
-                              RES_BUFFER, 
-                              DC_buffer_pool_get_usage (&srv->net_buffer_pool));
-            }
-        } else {
-            free (buf);
+    if (srv->config->max_buffers) {
+        NetLockContext (srv);
+        BufferFree (srv, buf, srv->net_buffer_pool);
+        if (srv->delegate->resourceUsage) {
+            srv->delegate->resourceUsage (srv, 
+                          RES_BUFFER, 
+                          DC_buffer_pool_get_usage (&srv->net_buffer_pool));
         }
+        NetUnlockContext (srv);
+    } else {
+        free (buf);
     }
-    //fprintf (stderr, "Free:%p\n", buf);
+
+    Dlog ("[libdc] free system buffer: %p\n", buf);
 }
 
-NetIO_t *NetIOAlloc (Net_t *srv)
+NetIO_t *NetAllocIO (Net_t *srv)
 {
     NetIO_t *iobuf = NULL;
-    
+
     if (srv->config->max_requests) {
+        NetLockContext (srv);
         BufferAlloc (srv, iobuf, NetIO_t, srv->net_io_pool, sizeof (NetIO_t));
         if (iobuf) {
             memset (iobuf, '\0', sizeof (NetIO_t));
-            iobuf->refcount = 1;
-        } else {
-            return NULL;
-        }
-
-        if (srv->delegate->resourceUsage) {
-            srv->delegate->resourceUsage (srv, 
+            if (srv->delegate->resourceUsage) {
+                srv->delegate->resourceUsage (srv, 
                                           RES_IO, 
                                           DC_buffer_pool_get_usage (&srv->net_io_pool));
+            }
         }
+        NetUnlockContext (srv);
     } else {
-        if ((iobuf = (NetIO_t*)calloc (1, sizeof (NetIO_t)))) {
-            iobuf->refcount = 1;
-        }
+       iobuf = (NetIO_t*)calloc (1, sizeof (NetIO_t));
     }
-    iobuf->PRI (buf_link).next = \
-    iobuf->PRI (buf_link).prev = \
-    &iobuf->PRI (buf_link);
-
-    DC_mutex_init (&iobuf->PRI (io_lock), 0, NULL, NULL);
+   
+    Dlog ("[libdc] allocate IO : %p\n", iobuf);
     return iobuf;
 }
 
-void NetIOFree (Net_t *srv, NetIO_t *io)
+void NetIORelease (NetIO_t *io)
 {
-    NetIOLock (io);
     io->refcount--;
-    NetIOUnlock (io);
-
     if (io->refcount <= 0) {
-        DC_mutex_destroy (&io->PRI (io_lock));
-        if (srv->config->max_requests) {
-            BufferFree (srv, io, srv->net_io_pool);
-            if (srv->delegate->resourceUsage) {
-                srv->delegate->resourceUsage (srv, 
-                                          RES_BUFFER, 
-                                          DC_buffer_pool_get_usage (&srv->net_io_pool));
-            }
-        } else {
-            free (io);
+        DC_mutex_destroy (&io->io_lock);
+        if (io->release_cb) {
+            io->release_cb (io, io->cb_data);
         }
     }
 }
 
-
 NetIO_t *NetIOGet (NetIO_t *io)
 {
-    NetIOLock (io);
     io->refcount++;
-    NetIOUnlock (io);
     return io;
 }
 
-NetBuffer_t *NetBufferGet (NetBuffer_t *buf)
+void NetFreeIO (Net_t *srv, NetIO_t *io)
 {
-    buf->refcount++;
-    return buf;
+    if (srv->config->max_requests) {
+        NetLockContext (srv);
+        BufferFree (srv, io, srv->net_io_pool);
+        if (srv->delegate->resourceUsage) {
+            srv->delegate->resourceUsage (srv, 
+                                   RES_BUFFER, 
+                                   DC_buffer_pool_get_usage (&srv->net_io_pool));
+        }
+        NetUnlockContext (srv);
+    } else {
+        free (io);
+    }
+
+    Dlog ("[libdc] free IO: %p\n", io);
+}
+
+
+void NetBufferSetIO (Net_t *srv, NetBuffer_t *buf, NetIO_t *io)
+{
+    if (io) {
+        buf->io = NetIOGet(io);
+        DC_link_add (io->PRI (buffer_link).prev, &buf->PRI (buffer_link));
+    }
+}
+
+void NetBufferRemoveIO (Net_t *srv, NetBuffer_t *buf)
+{
+    if (buf->io) {
+        NetIORelease (buf->io);
+        DC_link_remove (&buf->PRI (buffer_link));
+        buf->io = NULL;
+    }
 }

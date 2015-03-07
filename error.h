@@ -16,8 +16,8 @@ static  char *__WIN_fromat_error (int errcode)
 #ifndef ERRNO
 #define ERRNO GetLastError()
 #endif
-#ifndef ERRSYS
-#define ERRSYS  __WIN_format_error(ERRNO)
+#ifndef ERRSTR
+#define ERRSTR  __WIN_format_error(ERRNO)
 #endif
 #else
 
@@ -25,8 +25,8 @@ static  char *__WIN_fromat_error (int errcode)
 #define ERRNO errno
 #endif
 
-#ifndef ERRSYS
-#define ERRSYS strerror(errno)
+#ifndef ERRSTR
+#define ERRSTR strerror(errno)
 #endif
 
 #endif
@@ -39,7 +39,7 @@ enum {
     ERR_NOTFOUND = -4,
 };
 
-extern const char *ERRSTR(int);
+extern const char *STRERR(int);
 
 typedef struct _DC_error {
     char *text;

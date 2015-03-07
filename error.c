@@ -1,10 +1,10 @@
 #include "error.h"
 
 
-const char *ERRSTR (int err) {
+const char *STRERR (int err) {
     const char *__errstr__[] = {
         [-ERR_OK]       = "Success",
-        [-ERR_SYSTEM]   = ERRSYS,
+        [-ERR_SYSTEM]   = ERRSTR,
         [-ERR_TIMEDOUT] = "Operation timedout",
     };
 

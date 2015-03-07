@@ -6,18 +6,37 @@
 DC_CPP (extern "C" {)
 
 typedef struct _DC_link {
-    char   class_name[SZ_CLASS_NAME];
+    char   class_name[SZ_CLASS_NAME+1];
     struct _DC_link *next;
     struct _DC_link *prev;
 } DC_link_t;
 
+#define DC_link_init(_link, _name) \
+    do {\
+        memset (&_link, '\0', sizeof (_link));\
+        _link.next = _link.prev = NULL;\
+        if (_name) {\
+            strncpy (_link.class_name, (char*)_name, SZ_CLASS_NAME);\
+        }\
+    } while (0)
 
+#define DC_link_init2(_link, _name) \
+    do {\
+        memset (&_link, '\0', sizeof (_link));\
+        _link.next = _link.prev = &_link;\
+        if (_name) {\
+            strncpy (_link.class_name, (char*)_name, SZ_CLASS_NAME);\
+        }\
+    } while (0)
+
+extern void DC_link_assign (const DC_link_t *link,
+                            DC_link_t *newlink);
 extern void DC_link_add_after (DC_link_t *before, DC_link_t *link);
 extern void DC_link_add_before (DC_link_t *after, DC_link_t *link);
 extern void DC_link_remove (DC_link_t *link);
 
 //set a class name for a link.
-#define DC_link_set_class_name(link, name)   {strncpy (link->class_name, name, sizeof (link->class_name)-1);}
+//#define DC_link_set_class_name(link, name)   {strncpy (link->class_name, name, sizeof (link->class_name)-1);}
 
 #define DC_link_add(prev, link) DC_link_add_after(prev, link)
 
