@@ -35,11 +35,6 @@ static int tcpWillAcceptRemoteIO (NetIO_t *io)
     return 0;
 }
 
-static int tcpCheckIO (NetIO_t *io)
-{
-    return 1;
-}
-
 static int tcpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *io)
 {
     newio->fd = accept (io->fd, (struct sockaddr*)&newio->local_addr.ss, &newio->local_addr.sock_length);

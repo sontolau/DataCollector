@@ -18,16 +18,16 @@ static NetConfig_t netConfig = {
     .num_listeners = 1,
     .max_requests = 2,
     .max_buffers  = 0,
-    .check_conn_timeout = 1,
+    .conn_timeout = 3,
     .num_process_threads = 1,
     .buffer_size = 1000,
     .queue_size = 100,
     .timer_interval = 1,
 };
 
-void fun1 (Net_t *net, NetAddr_t *addr, int index)
+void server_fun (Net_t *net, NetAddr_t *addr, int index)
 {
-    addr->net_type = NET_TCP;
+    addr->net_type = NET_UDP;
     addr->net_flag |= NET_F_BIND;
     //addr->net_flag |= NET_F_SSL;
     addr->net_port = 8888;
@@ -36,7 +36,7 @@ void fun1 (Net_t *net, NetAddr_t *addr, int index)
     addr->net_ssl.key  = SERV_KEY;
 }
 
-int fun2 (Net_t *net, NetBuffer_t *buf)
+int server_proc (Net_t *net, NetBuffer_t *buf)
 {
     NetBuffer_t *tmpbuf = NetAllocBuffer (net);
 
@@ -50,49 +50,59 @@ int fun2 (Net_t *net, NetBuffer_t *buf)
     return 0;
 }
 
-static NetDelegate_t netDelegate = {
-    .getNetAddressWithIndex = fun1,
-    .processBuffer                 = fun2,
+
+void client_fun (Net_t *net, NetAddr_t *addr, int index)
+{
+    addr->net_type = NET_UDP;
+    addr->net_flag = 0;
+    addr->net_port = 8888;
+    strncpy (addr->net_addr, "0.0.0.0", MAX_NET_ADDR_LEN);
+    addr->net_ssl.cert = CLIENT_CERT;
+    addr->net_ssl.key  = SERV_KEY;
+}
+
+int client_proc (Net_t *net, NetBuffer_t *buf)
+{
+    printf ("Received from server: %s\n", buf->buffer);
+    return 0;
+}
+
+static NetDelegate_t serverDelegate = {
+    .getNetAddressWithIndex        = server_fun,
+    .processBuffer                 = server_proc,
+};
+
+static Net_t net;
+void *send_proc (void *data)
+{
+     NetIO_t *io = NetGetIO (((Net_t*)&net), 0);
+    while (1) {
+        NetIOWriteTo (io, "hello", 5);
+        sleep (1);
+    }
+
+}
+
+void run_net (Net_t *net)
+{
+    pthread_t pt;
+    pthread_create (&pt, NULL, send_proc, NULL);
+}
+
+static NetDelegate_t clientDelegate = {
+    .getNetAddressWithIndex = client_fun,
+    .willRunNet             = run_net,
+    .processBuffer          = client_proc,
 };
 
 int main (int argc, const char *argv[])
 {
-    Net_t net;
-    NetIO_t cio;
     NetAddr_t remote;
     int len = 0;
-
+    memset (&net, '\0', sizeof (net));
     if (argc <= 1) {
-        memset (&net, '\0', sizeof (net));
-        return NetRun (&net, &netConfig, &netDelegate);
+        return NetRun (&net, &netConfig, &serverDelegate);
     } else {
-        memset (&remote, '\0', sizeof (remote));
-        remote.net_type = NET_TCP;
-        //remote.net_flag |= NET_F_SSL;
-        remote.net_port = 8888;
-        strcpy (remote.net_addr, "0.0.0.0");
-        remote.net_ssl.cert = CLIENT_CERT;
-        remote.net_ssl.key  = CLIENT_KEY;
-
-        memset (&cio, '\0', sizeof (cio));
-        NetIOInit (((NetIO_t*)&cio), &remote, NULL, NULL);
-        if (NetIOCreate (((NetIO_t*)&cio)) < 0) {
-            return -1;
-        }
-       // NetIOClose ((((NetIO_t*)&cio)));
-       // NetIORelease (&cio);
-
-        //sleep (1000);
-        char message[50] = "How are you";
-        strcpy (message, argv[1]);
-        while (1) {
-            if (NetIOWriteTo (((NetIO_t*)&cio), message, strlen (message)) <= 0 ||
-                (len = NetIOReadFrom (((NetIO_t*)&cio), message, 50)) <= 0) {
-                break;
-            }
-            message[len] = '\0';
-            printf ("Read: %s\n", message);
-        };
-        NetIOClose ((((NetIO_t*)&cio)));
+        return NetRun (&net, &netConfig, &clientDelegate);
     }
 }

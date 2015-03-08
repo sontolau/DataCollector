@@ -125,6 +125,12 @@ extern void NetIORelease (NetIO_t *io);
         }\
     } while (0)
 
+#define NetIOUpdate(_io) \
+    do {\
+        DC_link_remove (&_io->PRI (conn_link));\
+        DC_link_add (&_io->PRI (conn_link), &_io->to->PRI (conn_link));\
+    } while (0)
+
 typedef struct _NetBuffer {
     NetIO_t      *io;
     unsigned int buffer_size;
@@ -147,7 +153,7 @@ typedef struct _NetConfig {
     unsigned int buffer_size;
     int  queue_size;
     unsigned int timer_interval;
-    int  check_conn_timeout;
+    int  conn_timeout;
 } NetConfig_t;
 
 enum {
@@ -193,7 +199,7 @@ typedef Net_t NetServer_t;
  */
 #define NetLockContext(srv)      do { DC_mutex_lock (&srv->PRI (serv_lock), 0, 1);}while (0)
 #define NetUnlockContext(srv)    do { DC_mutex_unlock (&srv->PRI (serv_lock));} while (0)
-#define NetGetIOWithIndex(srv, index)    (&srv->net_io[index])
+#define NetGetIO(srv, index)    (&srv->net_io[index])
 #define NetSetUserData(srv, data)        do{srv->private_data = data;}while(0);
 #define NetGetUserData(srv)              (srv->private_data)
 #define NetGetStatus(srv)                (srv->status)
@@ -214,8 +220,6 @@ extern void NetBufferSetRemote(NetBuffer_t *buf, NetSocketAddr_t *addr);
 extern void NetBufferSetIO (Net_t *srv, NetBuffer_t *buf, NetIO_t *io);
 
 extern void NetBufferRemoveIO (Net_t *srv, NetBuffer_t *buf);
-
-extern NetIO_t *NetGetIO (Net_t *net, int index);
 
 enum {
     RES_IO    = 1,

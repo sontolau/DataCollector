@@ -147,12 +147,15 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
     DC_link_t   tmplink;
     int         iostatus = 1;
 
+    // fetch each outgoing IO from queue.
     while ((io = GetIOFromReplyQueue (serv))) {
         iostatus = 1;
+        // set buffer link from IO to local.
         DC_link_assign (&io->PRI (buffer_link), &tmplink);
         DC_link_init2 (io->PRI (buffer_link), NULL);
         NetIOUnlock (io);
 
+        // loop link to get all buffers to send.
         linkptr = tmplink.next;
         while (linkptr && linkptr != &tmplink) {
             nextlink = linkptr->next;
@@ -170,6 +173,7 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
 
 void NetCommitIO (Net_t *srv, NetIO_t *io)
 {
+    // put current io to the queue and wake up to send.
     NetIOLock (io);
     PutIOIntoReplyQueue (srv, io);
     if (DC_thread_get_status (((DC_thread_t*)&srv->reply_thread)) != THREAD_STAT_RUNNING) {
@@ -190,8 +194,8 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     NetIO_t *io = (NetIO_t*)w->data;
     NetIO_t *newio = NULL;
     NetBuffer_t *buffer = NULL;
-
-    io->timer = srv->timer;
+    
+    // allocate a buffer and IO to receive data.
     if (!((buffer = NetAllocBuffer (srv)) &&
          (newio  = NetAllocIO (srv)))) {
         //TODO: process exception.
@@ -199,6 +203,7 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         if (newio)  NetFreeIO (srv, io);
         return;
     } else {
+        // copy meta data from local IO.
         NetIOInit (newio, io->addr_info, ReleaseIO, srv);
         newio->fd = io->fd;
         newio->to = io;
@@ -209,16 +214,23 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     buffer->buffer_length = 0;
     buffer->io            = newio;
 
+    // read data.
     if ((int)(buffer->buffer_length = NetIOReadFrom  (buffer->io, 
                                                       buffer->buffer,
                                                       buffer->buffer_size)) <= 0) {
-        Dlog ("[libdc] the remote peer has been closed.\n");
         NetIORelease (buffer->io);
         NetIORelease (io);
         NetFreeBuffer (srv, buffer);
         return;
     } else {
         Dlog ("[libdc] received %u bytes.\n", buffer->buffer_length);
+        // put data buffer into queue and wake up to process.
+        if (NetIOConnected (io)) {
+            NetIOLock (io);
+            io->timer = srv->timer;
+            NetIOUpdate (io);
+            NetIOUnlock (io);
+        }
 
         PutBufferIntoRequestQueue (srv, buffer);
         if (DC_thread_get_status (((DC_thread_t*)&srv->manager_thread)) == THREAD_STAT_IDLE) {
@@ -232,6 +244,7 @@ DC_INLINE void ReleaseConnectionIO (NetIO_t *io, void *data)
     Net_t *net = (Net_t*)data;
 
     if (NetIOConnected (io)) {
+        Dlog ("[libdc] disconnect remote peer.\n");
         if (net->delegate && net->delegate->willCloseNetIO) {
             net->delegate->willCloseNetIO (net, io);
         }
@@ -257,8 +270,9 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
         Dlog ("[libdc] ERROR: can not allocate memory, system is busy.\n");
         return;
     } else {
+        NetIOLock (io);
         NetIOInit (newio, io->addr_info, ReleaseConnectionIO, srv);
-
+        
         if (NetIOAcceptRemote (io, newio) < 0) {
             //TODO: process exception.
             NetIORelease (io);
@@ -279,6 +293,7 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
                         NetIOReadCallBack, 
                         newio->fd, EV_READ);
             ev_io_start (srv->ev_loop, &newio->ev);
+            NetIOUnlock (io);
         }
     }
 }
@@ -332,51 +347,54 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
 {
     Net_t *net = (Net_t*)data;
     NetIO_t *local_io = NULL,
-            *remote_io= NULL;
-    DC_link_t  *linkptr = NULL;
-    DC_link_t  tmplink;
-    int i;
+            *io= NULL;
+    register DC_link_t *linkptr = NULL,
+                       *nextlink= NULL;
+    DC_link_t          tmplink;
+    int i = 0;
 
-    tmplink.next = NULL;
-    tmplink.prev = NULL;
-
+    // check connections for each IO.
     for (i=0; i<net->config->num_listeners; i++) {
         local_io = &net->net_io[i];
-        tmplink.next = NULL;
-        tmplink.prev = NULL;
-/*
-        if (NetIOWillAcceptRemote (local_io)) {
-            do {
-                DC_mutex_lock (&net->PRI(serv_lock), 0, 1);
-                linkptr = local_io->PRI (conn_link).next;
-                if (linkptr && linkptr != &local_io->PRI (conn_link)) {
-                    DC_link_remove (linkptr);
-                } else {
-                    linkptr = NULL;
-                }
-                DC_mutex_unlock (&net->PRI(serv_lock));
-                if (linkptr) {
-                    remote_io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
-                    DC_mutex_lock (&remote_io->PRI (io_lock), 0, 1);
-                    if (!NetIOCheck (remote_io)) {
-                        Dlog ("[libdc] disconnect a remote peer.\n");
-                        //NetIOClose (remote_io);
-                        NetIORelease (net, remote_io, CloseNetIO);
-                    } else {
-                        DC_link_add (&tmplink, linkptr);
-                    }
-                    DC_mutex_unlock (&remote_io->PRI (io_lock));
-                }
-            } while (linkptr);
-
-            if (tmplink.next) {
-                DC_mutex_lock (&net->PRI(serv_lock), 0, 1);
-                local_io->PRI (conn_link).next = tmplink.next;
-                tmplink.next->prev = &local_io->PRI (conn_link);
-                DC_mutex_unlock (&net->PRI(serv_lock));
+        
+        NetIOLock (local_io);
+        // loop each connected client IO and to check which IO is 
+        // the lastest connected IO.
+        linkptr = local_io->PRI (conn_link).prev;
+        while (linkptr && linkptr != &local_io->PRI (conn_link)) {
+            io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
+            if (net->timer - io->timer < net->config->conn_timeout) {
+                break;
             }
+            linkptr = linkptr->prev;
         }
-*/
+
+        // if no clients are found disconnected then go to next.
+        if (linkptr == &local_io->PRI (conn_link)) {
+            NetIOUnlock (local_io);
+            continue;
+        }
+
+        // cut off all disconnected IO from local and 
+        // set them on a new link.
+        tmplink.next = linkptr->next;
+        tmplink.prev = local_io->PRI (conn_link).prev;
+
+        linkptr->next->prev = &tmplink;
+        local_io->PRI (conn_link).prev->next = &tmplink;
+
+        linkptr->next = &local_io->PRI (conn_link);
+        local_io->PRI (conn_link).prev= linkptr;
+        NetIOUnlock (local_io);
+
+        // close each disconnected IO.
+        linkptr = tmplink.next;
+        while (linkptr && linkptr != &tmplink) {
+            nextlink = linkptr->next;
+            io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
+            NetIORelease (io);
+            linkptr = nextlink;
+        }
     }
 }
 
@@ -481,8 +499,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
     Net_t *srv = (Net_t*)ev_userdata (ev);
 
     srv->timer++;
-    if (!(srv->timer++ % srv->config->check_conn_timeout) &&
-        DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) != THREAD_STAT_RUNNING) {
+    if (DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) != THREAD_STAT_RUNNING) {
         DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
     }
 
