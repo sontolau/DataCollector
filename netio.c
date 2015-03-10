@@ -275,13 +275,14 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
         
         if (NetIOAcceptRemote (io, newio) < 0) {
             //TODO: process exception.
-            NetIORelease (io);
-            NetIORelease (newio);
+            NetFreeIO (srv, newio);
+            NetIOUnlock (io);
             return;
         } else {
             if (srv->delegate && srv->delegate->willAcceptRemoteNetIO ) {
                 if (!srv->delegate->willAcceptRemoteNetIO (srv, newio)) {
                     NetIORelease (newio);
+                    NetIOUnlock (io);
                     return;
                 }
             }
@@ -309,17 +310,17 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
     NetIO_t *io;
     //NetAddr_t  ioinfo;
 
-    serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_listeners, sizeof (NetAddr_t));
+    serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_sockets, sizeof (NetAddr_t));
     if (serv->net_addr_array == NULL) {
         return -1;
     }
 
-    serv->net_io = (NetIO_t*)calloc (serv->config->num_listeners, sizeof (NetIO_t));
+    serv->net_io = (NetIO_t*)calloc (serv->config->num_sockets, sizeof (NetIO_t));
     if (serv->net_io == NULL) {
         return -1;
     }
 
-    for (i=0; i<serv->config->num_listeners &&
+    for (i=0; i<serv->config->num_sockets &&
         serv->delegate &&
         serv->delegate->getNetAddressWithIndex; i++) {
         io = &serv->net_io[i];
@@ -349,14 +350,20 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
     NetIO_t *local_io = NULL,
             *io= NULL;
     register DC_link_t *linkptr = NULL,
-                       *nextlink= NULL;
-    DC_link_t          tmplink;
+                       *tmplink= NULL;
+    DC_link_t          expired_link;
     int i = 0;
 
     // check connections for each IO.
-    for (i=0; i<net->config->num_listeners; i++) {
+    for (i=0; i<net->config->num_sockets; i++) {
         local_io = &net->net_io[i];
-        
+        if (!(local_io->addr_info->net_flag & NET_F_BIND)) {
+            continue;
+        }
+
+        expired_link.next = NULL;
+        expired_link.prev = NULL;
+
         NetIOLock (local_io);
         // loop each connected client IO and to check which IO is 
         // the lastest connected IO.
@@ -366,34 +373,27 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
             if (net->timer - io->timer < net->config->conn_timeout) {
                 break;
             }
-            linkptr = linkptr->prev;
+
+            tmplink = linkptr->prev;
+            DC_link_remove (linkptr);
+            DC_link_add    (&expired_link, linkptr);
+
+            linkptr = tmplink;
         }
 
         // if no clients are found disconnected then go to next.
-        if (linkptr == &local_io->PRI (conn_link)) {
-            NetIOUnlock (local_io);
+        NetIOUnlock (local_io);
+        if (expired_link.next == NULL) {
             continue;
         }
 
-        // cut off all disconnected IO from local and 
-        // set them on a new link.
-        tmplink.next = linkptr->next;
-        tmplink.prev = local_io->PRI (conn_link).prev;
-
-        linkptr->next->prev = &tmplink;
-        local_io->PRI (conn_link).prev->next = &tmplink;
-
-        linkptr->next = &local_io->PRI (conn_link);
-        local_io->PRI (conn_link).prev= linkptr;
-        NetIOUnlock (local_io);
-
         // close each disconnected IO.
-        linkptr = tmplink.next;
-        while (linkptr && linkptr != &tmplink) {
-            nextlink = linkptr->next;
+        linkptr = expired_link.next;
+        while (linkptr && linkptr != &expired_link) {
+            tmplink = linkptr->next;
             io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
             NetIORelease (io);
-            linkptr = nextlink;
+            linkptr = tmplink;
         }
     }
 }
@@ -402,7 +402,7 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
 {
     int i;
 
-    for (i=0; i<serv->config->num_listeners &&
+    for (i=0; i<serv->config->num_sockets &&
                 serv->net_io; i++) {
         NetIOClose (((NetIO_t*)&serv->net_io[i]));
         ev_io_stop (serv->ev_loop, &serv->net_io[i].ev);
@@ -497,10 +497,33 @@ DC_INLINE int InitNet (Net_t *serv)
 DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
 {
     Net_t *srv = (Net_t*)ev_userdata (ev);
+    NetBuffer_t *buf = NULL;
+    int         i = 0;
+    NetIO_t     *io = NULL;
 
     srv->timer++;
-    if (DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) != THREAD_STAT_RUNNING) {
-        DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
+    
+    for (i=0; i<srv->config->num_sockets; i++) {
+        io = NetGetIO (srv, i);
+        if (io->addr_info->net_flag & NET_F_BIND) {
+            if (DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) \
+                == THREAD_STAT_IDLE) {
+                DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
+            }
+        } else {
+            if (!(buf = NetAllocBuffer (srv))) {
+                Dlog ("[libdc] out of memory at line: %d\n", __LINE__);
+                continue;
+            } else {
+                if (srv->delegate && srv->delegate->ping) {
+                    if (srv->delegate->ping (srv, buf)) {
+                        NetBufferSetIO (srv, buf, io);
+                        NetCommitIO (srv, io);
+                    }
+                }
+                NetFreeBuffer (srv, buf);
+            }
+        }
     }
 
     if (srv->delegate && srv->delegate->timerout) {

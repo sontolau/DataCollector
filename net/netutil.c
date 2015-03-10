@@ -105,27 +105,31 @@ DC_INLINE long __ssl_read (SSL *ssl,unsigned char *buf, unsigned int szbuf)
 {
     long szread = 0;
 
-   do {
+   while (ssl) {
+        if (SSL_get_shutdown (ssl) & SSL_RECEIVED_SHUTDOWN) return 0;
        szread = SSL_read (ssl, buf, szbuf);
        switch (SSL_get_error (ssl, (int)szread)) {
            case SSL_ERROR_NONE:
                return szread;
            case SSL_ERROR_WANT_READ:
+           case SSL_ERROR_WANT_WRITE:
                break;
+           case SSL_ERROR_ZERO_RETURN:
+               return 0;
            default:
-               return -1;
+               break;
        }
-   } while (1);
+   }
 
-   return 0;
+   return -1;
 }
 
 DC_INLINE long __ssl_write (SSL *ssl, const unsigned char *buf, unsigned int szbuf)
 {
     long szwrite = 0;
 
-    do {
-        if (SSL_get_shutdown (ssl) & SSL_RECEIVED_SHUTDOWN) return -1;
+    while (ssl) {
+        if (SSL_get_shutdown (ssl) & SSL_RECEIVED_SHUTDOWN) return 0;
 
         szwrite = SSL_write (ssl, buf, szbuf);
         switch (SSL_get_error (ssl, (int)szwrite)) {
@@ -135,11 +139,11 @@ DC_INLINE long __ssl_write (SSL *ssl, const unsigned char *buf, unsigned int szb
             case SSL_ERROR_WANT_READ:
                 break;
             case SSL_ERROR_ZERO_RETURN:
-                return -1;
+                return -0;
             default:
-                return -1;
+                break;
         }
-    } while (1);
+    }
 
     return -1;
 }
@@ -167,4 +171,5 @@ DC_INLINE void __NOW (const char *timefmt, char buf[], int szbuf)
 
     strftime (buf, szbuf, timefmt, tmptr);
 }
+
 #endif

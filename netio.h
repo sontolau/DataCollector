@@ -8,6 +8,7 @@
 #include <openssl/bio.h>
 #include <openssl/err.h>
 #include <openssl/rand.h>
+#include <openssl/x509.h>
 
 #include "buffer.h"
 #include "queue.h"
@@ -42,6 +43,7 @@ typedef struct _NetAddr {
     char           net_addr[MAX_NET_ADDR_LEN];
 
     struct {
+        char *CA;
         char *cert;
         char *key;
     } net_ssl;
@@ -131,6 +133,7 @@ extern void NetIORelease (NetIO_t *io);
         DC_link_add (&_io->PRI (conn_link), &_io->to->PRI (conn_link));\
     } while (0)
 
+
 typedef struct _NetBuffer {
     NetIO_t      *io;
     unsigned int buffer_size;
@@ -145,7 +148,7 @@ typedef struct _NetConfig {
     char *chdir;
     char *log;
     int  daemon;
-    int  num_listeners;
+    int  num_sockets;
 
     int  max_requests;
     int  max_buffers;
@@ -233,6 +236,7 @@ typedef struct _NetDelegate {
     void (*willRunNet) (Net_t *srv);
     int (*willAcceptRemoteNetIO) (Net_t *srv, NetIO_t *io);
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
+    int (*ping) (Net_t*srv, NetBuffer_t*buf);
     void (*willChangeStatus) (Net_t *srv, int status);
     int  (*processBuffer) (Net_t *srv, NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);

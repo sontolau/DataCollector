@@ -6,6 +6,7 @@
 #include <arpa/inet.h>
 #include "netio.h"
 
+#define ROOT_CA "/root/Workspace/DataCollector/certs/root.pem"
 #define SERV_CERT "/root/Workspace/DataCollector/certs/server.pem"
 #define SERV_KEY  "/root/Workspace/DataCollector/certs/server.key"
 
@@ -15,25 +16,26 @@
 static NetConfig_t netConfig = {
     .chdir = "/",
     .daemon= 0,
-    .num_listeners = 1,
-    .max_requests = 2,
+    .num_sockets = 1,
+    .max_requests = 0,
     .max_buffers  = 0,
     .conn_timeout = 3,
     .num_process_threads = 1,
     .buffer_size = 1000,
     .queue_size = 100,
-    .timer_interval = 1,
+    .timer_interval = 2,
 };
 
 void server_fun (Net_t *net, NetAddr_t *addr, int index)
 {
     addr->net_type = NET_UDP;
     addr->net_flag |= NET_F_BIND;
-    //addr->net_flag |= NET_F_SSL;
+    addr->net_flag |= NET_F_SSL;
     addr->net_port = 8888;
     strncpy (addr->net_addr, "0.0.0.0", MAX_NET_ADDR_LEN);
     addr->net_ssl.cert = SERV_CERT;
     addr->net_ssl.key  = SERV_KEY;
+    addr->net_ssl.CA   = ROOT_CA;
 }
 
 int server_proc (Net_t *net, NetBuffer_t *buf)
@@ -54,11 +56,12 @@ int server_proc (Net_t *net, NetBuffer_t *buf)
 void client_fun (Net_t *net, NetAddr_t *addr, int index)
 {
     addr->net_type = NET_UDP;
-    addr->net_flag = 0;
+    addr->net_flag = NET_F_SSL;
     addr->net_port = 8888;
     strncpy (addr->net_addr, "0.0.0.0", MAX_NET_ADDR_LEN);
     addr->net_ssl.cert = CLIENT_CERT;
-    addr->net_ssl.key  = SERV_KEY;
+    addr->net_ssl.key  = CLIENT_KEY;
+    addr->net_ssl.CA   = ROOT_CA;
 }
 
 int client_proc (Net_t *net, NetBuffer_t *buf)
@@ -80,7 +83,6 @@ void *send_proc (void *data)
         NetIOWriteTo (io, "hello", 5);
         sleep (1);
     }
-
 }
 
 void run_net (Net_t *net)
