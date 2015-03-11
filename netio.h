@@ -52,6 +52,7 @@ typedef struct _NetAddr {
 
 typedef struct _NetIOHandler {
     int (*netCreateIO) (struct _NetIO*);
+    int (*netCtrlIO) (struct _NetIO*, int type, void *arg, int szarg);
     int (*willAcceptRemoteIO) (struct _NetIO*);
     int (*netCheckIO) (struct _NetIO*);
     int (*netAcceptRemoteIO) (struct _NetIO*,  const struct _NetIO*);
@@ -80,7 +81,6 @@ typedef struct _NetIO {
     unsigned int timer;
     int          refcount;
     NetSocketAddr_t local_addr;
-
     struct {
         SSL_CTX *ctx;
         SSL     *ssl;
@@ -100,38 +100,36 @@ extern int NetIOInit (NetIO_t *io,
                       void*); 
 
 extern void NetIORelease (NetIO_t *io);
+/*
+ * NetIOCtrl sets socket options.
+ */
+enum {
+    NET_IO_CTRL_BIND        =   1,
+    NET_IO_CTRL_CONNECT,  
+    NET_IO_CTRL_REUSEADDR,
+    NET_IO_CTRL_SET_RECV_TIMEOUT,
+    NET_IO_CTRL_SET_SEND_TIMEOUT,
+    NET_IO_CTRL_GET_RECV_TIMEOUT,
+    NET_IO_CTRL_GET_SEND_TIMEOUT,
+    NET_IO_CTRL_SET_SNDBUF,
+    NET_IO_CTRL_SET_RCVBUF,
+    NET_IO_CTRL_GET_SNDBUF,
+    NET_IO_CTRL_GET_RCVBUF,
+    NET_IO_CTRL_SET_NONBLOCK,
+};
 
-#define NetIOCreate(_io) (_io->__handler->netCreateIO (_io))
+#define NetIOCreate(_io)                  (_io->__handler->netCreateIO (_io))
+#define NetIOCtrl(_io, _type, _arg, _szarg) (_io->__handler->netCtrlIO (_io, _type, _arg, _szarg))
+#define NetIOConnect(_io, _addr, _addrlen) (NetIOCtrl (_io, NET_IO_CTRL_CONNECT, _addr, _addrlen))
+#define NetIOBind(_io, _addr, _addrlen)    (NetIOCtrl (_io, NET_IO_CTRL_BIND, _addr, _addrlen))
+
 #define NetIOAcceptRemote(_io, _to)       (_io->__handler->netAcceptRemoteIO (_to, _io))
-#define NetIOWillAcceptRemote(_io)    (_io->__handler->willAcceptRemoteIO (_io))
-#define NetIOReadFrom(_io, _buf, _szbuf)   (_io->__handler->netReadFromIO (_io, _buf, _szbuf))
-#define NetIOWriteTo(_io, _bytes, _blen)      (_io->__handler->netWriteToIO (_io, _bytes, _blen))
-#define NetIOClose(_io)                    (_io->__handler->netCloseIO(_io))
-#define NetIOLock(_io)                   do {DC_mutex_lock (&_io->io_lock, 0, 1);} while(0)
-#define NetIOUnlock(_io)                 do {DC_mutex_unlock (&_io->io_lock);} while (0)
-#define NetIOConnect(_from, _to) \
-    do {\
-        _from->connected = 1;\
-        DC_link_add (&_to->PRI (conn_link), &_from->PRI (conn_link));\
-        _from->to = _to;\
-    } while (0)
-
-#define NetIOConnected(_io) (_io->connected)
-
-#define NetIODisconnect(_io) \
-    do {\
-        if (NetIOConnected (_io)) {\
-            DC_link_remove (&_io->PRI (conn_link));\
-            _io->to = NULL;\
-            _io->connected = 0;\
-        }\
-    } while (0)
-
-#define NetIOUpdate(_io) \
-    do {\
-        DC_link_remove (&_io->PRI (conn_link));\
-        DC_link_add (&_io->PRI (conn_link), &_io->to->PRI (conn_link));\
-    } while (0)
+#define NetIOWillAcceptRemote(_io)        (_io->__handler->willAcceptRemoteIO (_io))
+#define NetIOReadFrom(_io, _buf, _szbuf)  (_io->__handler->netReadFromIO (_io, _buf, _szbuf))
+#define NetIOWriteTo(_io, _bytes, _blen)  (_io->__handler->netWriteToIO (_io, _bytes, _blen))
+#define NetIOClose(_io)                   (_io->__handler->netCloseIO(_io))
+#define NetIOLock(_io)                    do {DC_mutex_lock (&_io->io_lock, 0, 1);} while(0)
+#define NetIOUnlock(_io)                  do {DC_mutex_unlock (&_io->io_lock);} while (0)
 
 
 typedef struct _NetBuffer {
@@ -155,6 +153,7 @@ typedef struct _NetConfig {
     int  num_process_threads;
     unsigned int buffer_size;
     int  queue_size;
+    unsigned int rw_timeout; //for receive and send timeout.
     unsigned int timer_interval;
     int  conn_timeout;
 } NetConfig_t;

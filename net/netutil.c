@@ -172,4 +172,33 @@ DC_INLINE void __NOW (const char *timefmt, char buf[], int szbuf)
     strftime (buf, szbuf, timefmt, tmptr);
 }
 
+DC_INLINE int __sock_ctrl (int fd, int type, void *arg, int szarg)
+{
+    socklen_t len = (socklen_t)szarg;
+
+    switch (type) {
+        case NET_IO_CTRL_REUSEADDR:
+            return setsockopt (fd, SOL_SOCKET, SO_REUSEADDR, arg, len);
+        case NET_IO_CTRL_SET_RECV_TIMEOUT:
+            return setsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, arg, len);
+        case NET_IO_CTRL_SET_SEND_TIMEOUT:
+            return setsockopt (fd, SOL_SOCKET, SO_SNDTIMEO, arg, len);
+        case NET_IO_CTRL_GET_RECV_TIMEOUT:
+            return getsockopt (fd, SOL_SOCKET, SO_RCVTIMEO, arg, &len);
+        case NET_IO_CTRL_GET_SEND_TIMEOUT:
+            return getsockopt (fd, SOL_SOCKET, SO_SNDTIMEO, arg, &len);
+        case NET_IO_CTRL_SET_RCVBUF:
+            return setsockopt (fd, SOL_SOCKET, SO_RCVBUF, arg, len);
+        case NET_IO_CTRL_SET_SNDBUF:
+            return setsockopt (fd, SOL_SOCKET, SO_SNDBUF, arg, len);
+        case NET_IO_CTRL_GET_RCVBUF:
+            return getsockopt (fd, SOL_SOCKET, SO_RCVBUF, arg, &len);
+        case NET_IO_CTRL_GET_SNDBUF:
+            return getsockopt (fd, SOL_SOCKET, SO_SNDBUF, arg, &len);
+        default:
+            break;
+    }
+
+    return -1;
+}
 #endif

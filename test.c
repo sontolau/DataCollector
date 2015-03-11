@@ -24,13 +24,14 @@ static NetConfig_t netConfig = {
     .buffer_size = 1000,
     .queue_size = 100,
     .timer_interval = 2,
+    .rw_timeout = 2000,
 };
 
 void server_fun (Net_t *net, NetAddr_t *addr, int index)
 {
     addr->net_type = NET_UDP;
     addr->net_flag |= NET_F_BIND;
-    addr->net_flag |= NET_F_SSL;
+    //addr->net_flag |= NET_F_SSL;
     addr->net_port = 8888;
     strncpy (addr->net_addr, "0.0.0.0", MAX_NET_ADDR_LEN);
     addr->net_ssl.cert = SERV_CERT;
@@ -56,7 +57,7 @@ int server_proc (Net_t *net, NetBuffer_t *buf)
 void client_fun (Net_t *net, NetAddr_t *addr, int index)
 {
     addr->net_type = NET_UDP;
-    addr->net_flag = NET_F_SSL;
+    //addr->net_flag = NET_F_SSL;
     addr->net_port = 8888;
     strncpy (addr->net_addr, "0.0.0.0", MAX_NET_ADDR_LEN);
     addr->net_ssl.cert = CLIENT_CERT;
@@ -81,7 +82,7 @@ void *send_proc (void *data)
      NetIO_t *io = NetGetIO (((Net_t*)&net), 0);
     while (1) {
         NetIOWriteTo (io, "hello", 5);
-        sleep (1);
+        break;
     }
 }
 

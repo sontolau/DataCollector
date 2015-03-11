@@ -15,11 +15,39 @@
 #include "net/netudp.c"
 #include "net/netcomm.c"
 
+
+#define IOConnect(_from, _to) \
+    do {\
+        _from->connected = 1;\
+        DC_link_add (&_to->PRI (conn_link), &_from->PRI (conn_link));\
+        _from->to = _to;\
+    } while (0)
+
+#define IOConnected(_io) (_io->connected)
+
+#define IODisconnect(_io) \
+    do {\
+        if (IOConnected (_io)) {\
+            DC_link_remove (&_io->PRI (conn_link));\
+            _io->to = NULL;\
+            _io->connected = 0;\
+        }\
+    } while (0)
+
+#define IOUpdate(_io) \
+    do {\
+        DC_link_remove (&_io->PRI (conn_link));\
+        DC_link_add (&_io->PRI (conn_link), &_io->to->PRI (conn_link));\
+    } while (0)
+
+
+
 NetIOHandler_t NetProtocolHandler[] = {
     [NET_TCP] = {
         .netCreateIO          = tcpCreateIO,
         .willAcceptRemoteIO   = tcpWillAcceptRemoteIO,
         .netAcceptRemoteIO    = tcpAcceptRemoteIO,
+        .netCtrlIO            = tcpCtrlIO,
         .netReadFromIO        = tcpReadFromIO,
         .netWriteToIO         = tcpWriteToIO,
         .netCloseIO         = tcpCloseIO,
@@ -28,6 +56,7 @@ NetIOHandler_t NetProtocolHandler[] = {
         .netCreateIO          = udpCreateIO,
         .willAcceptRemoteIO   = udpWillAcceptRemoteIO,
         .netAcceptRemoteIO    = udpAcceptRemoteIO,
+        .netCtrlIO            = udpCtrlIO,
         .netReadFromIO        = udpReadFromIO,
         .netWriteToIO         = udpWriteToIO,
         .netCloseIO         = udpCloseIO,
@@ -188,7 +217,7 @@ DC_INLINE void ReleaseIO (NetIO_t *io, void *data)
     NetFreeIO (net, io);
 }
 
-DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
+DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
@@ -225,10 +254,10 @@ DC_INLINE void NetIOReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     } else {
         Dlog ("[libdc] received %u bytes.\n", buffer->buffer_length);
         // put data buffer into queue and wake up to process.
-        if (NetIOConnected (io)) {
+        if (IOConnected (io)) {
             NetIOLock (io);
             io->timer = srv->timer;
-            NetIOUpdate (io);
+            IOUpdate (io);
             NetIOUnlock (io);
         }
 
@@ -243,13 +272,14 @@ DC_INLINE void ReleaseConnectionIO (NetIO_t *io, void *data)
 {
     Net_t *net = (Net_t*)data;
 
-    if (NetIOConnected (io)) {
+    if (IOConnected (io)) {
+        
         Dlog ("[libdc] disconnect remote peer.\n");
         if (net->delegate && net->delegate->willCloseNetIO) {
             net->delegate->willCloseNetIO (net, io);
         }
 
-        NetIODisconnect (io);
+        IODisconnect (io);
         ev_io_stop (net->ev_loop, &io->ev);
     }
 
@@ -257,12 +287,14 @@ DC_INLINE void ReleaseConnectionIO (NetIO_t *io, void *data)
     NetFreeIO (net, io);
 }
 
-DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev, 
+DC_INLINE void NetAcceptCallBack (struct ev_loop *ev, 
                                     ev_io *w, 
                                     int revents)
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
+    struct timeval rwtimeo = {0, 0};
+    unsigned int szbuf = 0;
 
     NetIO_t *newio = NetAllocIO (srv);
     if (newio == NULL) {
@@ -279,6 +311,7 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
             NetIOUnlock (io);
             return;
         } else {
+/*
             if (srv->delegate && srv->delegate->willAcceptRemoteNetIO ) {
                 if (!srv->delegate->willAcceptRemoteNetIO (srv, newio)) {
                     NetIORelease (newio);
@@ -286,13 +319,25 @@ DC_INLINE void NetIOAcceptCallBack (struct ev_loop *ev,
                     return;
                 }
             }
+*/
+            
+            NetIOCtrl (io, NET_IO_CTRL_GET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+            NetIOCtrl (newio, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+            NetIOCtrl (io, NET_IO_CTRL_GET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+            NetIOCtrl (newio, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+            NetIOCtrl (io, NET_IO_CTRL_GET_RCVBUF, &szbuf, sizeof (szbuf));
+            NetIOCtrl (newio, NET_IO_CTRL_SET_RCVBUF, &szbuf, sizeof (szbuf));
+            NetIOCtrl (io, NET_IO_CTRL_GET_SNDBUF, &szbuf, sizeof (szbuf));
+            NetIOCtrl (newio, NET_IO_CTRL_SET_SNDBUF, &szbuf, sizeof (szbuf));
+            //NetIOCtrl (newio, NET_IO_CTRL_SET_NONBLOCK, NULL, 0);
 
-            NetIOConnect (newio, io);
+            IOConnect (newio, io);
             newio->timer = srv->timer;
             newio->ev.data = newio;
             ev_io_init (&newio->ev, 
-                        NetIOReadCallBack, 
-                        newio->fd, EV_READ);
+                        NetReadCallBack, 
+                        newio->fd, 
+                        EV_READ);
             ev_io_start (srv->ev_loop, &newio->ev);
             NetIOUnlock (io);
         }
@@ -308,7 +353,10 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
 {
     int i;
     NetIO_t *io;
-    //NetAddr_t  ioinfo;
+    NetConfig_t *netcfg = serv->config;
+    struct timeval rwtimeo =  {(int)(netcfg->rw_timeout/1000), 
+                               (netcfg->rw_timeout % 1000)*1000};
+    int            flag = 1;
 
     serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_sockets, sizeof (NetAddr_t));
     if (serv->net_addr_array == NULL) {
@@ -331,10 +379,33 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
         if (NetIOCreate (io) < 0) {
             return -1;
         } else {
-            if (NetIOWillAcceptRemote (io)) {
-                ev_io_init (&io->ev, NetIOAcceptCallBack, io->fd, EV_READ);
+            if (netcfg->rw_timeout) {
+                NetIOCtrl (io, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+                NetIOCtrl (io, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+            }
+
+            if (netcfg->buffer_size) {
+                NetIOCtrl (io, NET_IO_CTRL_SET_SNDBUF, &netcfg->buffer_size, sizeof (int));
+                NetIOCtrl (io, NET_IO_CTRL_SET_RCVBUF, &netcfg->buffer_size, sizeof (int));
+            }
+
+            if (io->addr_info->net_flag & NET_F_BIND) {
+                NetIOCtrl (io, NET_IO_CTRL_REUSEADDR, &flag, sizeof (flag));
+                if (NetIOBind (io, NULL, 0) < 0) {
+                    NetIOClose (io);
+                    return -1;
+                }
             } else {
-                ev_io_init (&io->ev, NetIOReadCallBack, io->fd, EV_READ);
+                if (NetIOConnect (io, NULL, 0) < 0) {
+                    NetIOClose (io);
+                    return -1;
+                }
+            }
+
+            if (NetIOWillAcceptRemote (io)) {
+                ev_io_init (&io->ev, NetAcceptCallBack, io->fd, EV_READ);
+            } else {
+                ev_io_init (&io->ev, NetReadCallBack, io->fd, EV_READ);
             }
             ev_io_start (serv->ev_loop, &io->ev);
             io->ev.data = io;
@@ -576,6 +647,7 @@ DC_INLINE int RunNet (Net_t *serv)
 DC_INLINE void ReleaseNet (Net_t *serv)
 {
     Dlog ("[libdc] QUITING ... ...\n");
+    NetLockContext (serv);
     ev_loop_destroy (serv->ev_loop);
     DC_queue_destroy (&serv->request_queue);
     DC_queue_destroy (&serv->reply_queue);

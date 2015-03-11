@@ -65,10 +65,11 @@ static int __dtls_verify_cookie (SSL *ssl, unsigned char *cookie, unsigned int c
     return 0;
 }
 
-static int DTLSInit (NetIO_t *io, const NetAddr_t *addr)
+static int __DTLS_init (NetIO_t *io, const NetAddr_t *addr)
 {
     int verify_flag = 0;
-
+    BIO   *bio = NULL;
+    
     SSL_library_init ();
     OpenSSL_add_ssl_algorithms ();
     SSL_load_error_strings ();
@@ -91,13 +92,6 @@ static int DTLSInit (NetIO_t *io, const NetAddr_t *addr)
     }
 
     if (addr->net_flag & NET_F_BIND) {
-/*
-        SSL_CTX_set_verify (io->ssl.ctx,
-                            verify_flag?(SSL_VERIFY_PEER|\
-                                         SSL_VERIFY_FAIL_IF_NO_PEER_CERT)
-                            :SSL_VERIFY_NONE,
-                            __dtls_verify_cb);
-*/
         SSL_CTX_set_read_ahead (io->ssl.ctx, 1);
         SSL_CTX_set_cookie_generate_cb (io->ssl.ctx, __dtls_generate_cookie);
         SSL_CTX_set_cookie_verify_cb   (io->ssl.ctx, __dtls_verify_cookie);
@@ -106,62 +100,108 @@ static int DTLSInit (NetIO_t *io, const NetAddr_t *addr)
         SSL_CTX_set_read_ahead (io->ssl.ctx, 1);
     }
 
+    io->ssl.ssl = SSL_new (io->ssl.ctx);
+    bio         = BIO_new_dgram (io->fd, BIO_NOCLOSE);
+    SSL_set_bio (io->ssl.ssl, bio, bio);
+    
+    return 0;
+}
+
+static void __DTLS_destroy (NetIO_t *io)
+{
+    if (io->ssl.ssl) {
+        SSL_shutdown (io->ssl.ssl);
+        SSL_free (io->ssl.ssl);
+        io->ssl.ssl = NULL;
+    }
+
+    if (io->ssl.ctx) {
+        SSL_CTX_free (io->ssl.ctx);
+        io->ssl.ctx = NULL;
+    }
+}
+
+static int __DTLS_connect (NetIO_t *io)
+{
+   BIO *bio = NULL;
+
+    if (connect (io->fd,
+                 (struct sockaddr*)&io->local_addr.ss,
+                 io->local_addr.sock_length) < 0) {
+       return -1;
+    }
+
+    bio = SSL_get_rbio (io->ssl.ssl);
+    BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &io->local_addr.ss);
+    if (SSL_connect (io->ssl.ssl) != 1) {
+        return -1;
+    }
 
     return 0;
 }
 
 static int udpCreateIO (NetIO_t *io)
 {
-    int flag = 1;
     NetAddr_t *info = io->addr_info;
-    BIO       *bio  = NULL;
-    struct timeval timeout = {0,100};
 
     io->fd = socket (io->local_addr.ss.ss_family, SOCK_DGRAM, 0);
     if (io->fd < 0) {
         return -1;
     }
 
-    __set_nonblock (io->fd);
-
     if (info->net_flag & NET_F_SSL) {
-        if (DTLSInit (io, info) < 0) {
+        if (__DTLS_init (io, info) < 0) {
             close (io->fd);
             return -1;
-        }
-    }
-
-    if (info->net_flag & NET_F_BIND) {
-        setsockopt (io->fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (int));
-        if (bind (io->fd, 
-            (struct sockaddr*)&io->local_addr.ss, 
-            io->local_addr.sock_length) < 0) {
-ERR_QUIT:
-            if (info->net_flag & NET_F_SSL) {
-                SSL_free (io->ssl.ssl);
-                SSL_CTX_free (io->ssl.ctx);
-                ERR_print_errors_fp (stderr);
-            }
-            close (io->fd);
-            return -1;
-        }
-    } else if (info->net_flag & NET_F_SSL) {
-        if (connect (io->fd, 
-                     (struct sockaddr*)&io->local_addr.ss, 
-                     io->local_addr.sock_length) < 0) {
-            goto ERR_QUIT;
-        }
-        bio = BIO_new_dgram (io->fd, BIO_NOCLOSE);
-        BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &io->local_addr.ss);
-        BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
-        io->ssl.ssl = SSL_new (io->ssl.ctx);
-        SSL_set_bio (io->ssl.ssl, bio, bio);
-        if (SSL_connect (io->ssl.ssl) != 1) {
-            goto ERR_QUIT;
         }
     }
 
     return 0;
+}
+
+
+static int udpCtrlIO (NetIO_t *io, int type, void *arg, int size)
+{
+    BIO *bio = NULL;
+
+    switch (type) {
+        case NET_IO_CTRL_BIND:
+        {
+            return bind (io->fd, 
+                         arg?arg:(struct sockaddr*)&io->local_addr.ss,
+                         arg?size:io->local_addr.sock_length);
+        }
+            break;
+        case NET_IO_CTRL_CONNECT:
+        {
+            if (io->addr_info->net_flag & NET_F_SSL) {
+                return __DTLS_connect (io);
+            }
+            return 0;
+        }
+            break;
+        case NET_IO_CTRL_SET_NONBLOCK:
+        {
+            __set_nonblock (io->fd);
+            if (io->addr_info->net_flag & NET_F_SSL) {
+                bio = SSL_get_rbio (io->ssl.ssl);
+                BIO_set_nbio (bio, 1);
+            }
+        }
+            break;
+        case NET_IO_CTRL_SET_RECV_TIMEOUT:
+        {
+            if (io->addr_info->net_flag & NET_F_SSL) {
+                BIO_ctrl (SSL_get_rbio (io->ssl.ssl), BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, arg);
+            }
+            return __sock_ctrl (io->fd, type ,arg, size);
+        }
+            break;
+        default:
+            return __sock_ctrl (io->fd, type, arg, size);
+    }
+
+    return -1;
 }
 
 static int udpWillAcceptRemoteIO (NetIO_t *srvio)
@@ -178,48 +218,48 @@ static int udpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *srvio)
 {
     int flag = 1;
     BIO  *bio = NULL;
-    struct timeval timeout = {0,100};
+    struct timeval timeout = {0, 0};
 
     bio = BIO_new_dgram (srvio->fd, BIO_NOCLOSE);
+    
+    BIO_ctrl (SSL_get_rbio (srvio->ssl.ssl), BIO_CTRL_DGRAM_GET_RECV_TIMEOUT, 0, &timeout);
+    BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
     newio->ssl.ctx = NULL;
     newio->ssl.ssl = SSL_new (srvio->ssl.ctx);
+
     SSL_set_bio (newio->ssl.ssl, bio, bio);
     SSL_set_options (newio->ssl.ssl, SSL_OP_COOKIE_EXCHANGE);
-    BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
 
     if (DTLSv1_listen (newio->ssl.ssl, &newio->local_addr.ss) <=0) {
-ERR_QUIT:
-        SSL_free (newio->ssl.ssl);
         ERR_print_errors_fp (stderr);
         return -1;
     }
 
     newio->fd = socket (srvio->local_addr.ss.ss_family, SOCK_DGRAM, 0);
     if (newio->fd < 0) {
-        goto ERR_QUIT;
-    }
-    __set_nonblock (newio->fd);
-    setsockopt (newio->fd, SOL_SOCKET, SO_REUSEADDR, &flag, sizeof (flag));
-    if (bind (newio->fd, 
-              (struct sockaddr*)&srvio->local_addr.ss, 
-              srvio->local_addr.sock_length) < 0 ||
-        connect (newio->fd, 
-                 (struct sockaddr*)&newio->local_addr.ss, 
-                 srvio->local_addr.sock_length) < 0) {
-        close (newio->fd);
-        goto ERR_QUIT;
+        return -1;
     }
 
-    bio = SSL_get_rbio (newio->ssl.ssl);
+    if (udpCtrlIO (newio, NET_IO_CTRL_REUSEADDR, &flag, sizeof (flag)) < 0 ||
+        bind (newio->fd, 
+              (struct sockaddr*)&srvio->local_addr.ss,
+              srvio->local_addr.sock_length) < 0 ||
+        connect(newio->fd, 
+                (struct sockaddr*)&newio->local_addr.ss,
+                newio->local_addr.sock_length) < 0) {
+        close (newio->fd);
+        return -1;
+    }
+ 
     BIO_set_fd (bio, newio->fd, BIO_NOCLOSE);
     BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_CONNECTED, 0, &newio->local_addr.ss);
-    BIO_ctrl (bio, BIO_CTRL_DGRAM_SET_RECV_TIMEOUT, 0, &timeout);
     if (SSL_accept (newio->ssl.ssl) <= 0) {
+        ERR_print_errors_fp (stderr);
+        __DTLS_destroy (newio);
         close (newio->fd);
-        goto ERR_QUIT;
+        return -1;
     }
 
-    
     return 0;
 }
 
@@ -288,15 +328,7 @@ static long udpWriteToIO (const NetIO_t *io,const unsigned char *bytes, unsigned
 static void udpCloseIO (NetIO_t *io)
 {
     if (io->addr_info->net_flag & NET_F_SSL) {
-        if (io->ssl.ssl) {
-            SSL_shutdown (io->ssl.ssl);
-            SSL_free (io->ssl.ssl);
-            io->ssl.ssl = NULL;
-        }
-        if (io->ssl.ctx) {
-            SSL_CTX_free (io->ssl.ctx);
-            io->ssl.ctx = NULL;
-        }
+        __DTLS_destroy (io);
     }
 
     close (io->fd);
