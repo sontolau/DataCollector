@@ -1,4 +1,4 @@
-#include <unistd.h>
+/*#include <unistd.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -10,7 +10,8 @@
 #include <sys/un.h>
 
 #include "netio.h"
-
+*/
+#include "libdc.h"
 #include "net/nettcp.c"
 #include "net/netudp.c"
 #include "net/netcomm.c"
@@ -141,8 +142,8 @@ static void ProcessRequestCore (DC_task_t *task ,void *data)
 
     while ((buf = GetBufferFromRequestQueue (serv))) {
         //TODO: add code here to process request from remote.
-        if (serv->delegate && serv->delegate->processBuffer) {
-            serv->delegate->processBuffer (serv, buf);
+        if (serv->delegate && serv->delegate->processData) {
+            serv->delegate->processData (serv, buf->io, buf);
         }
         NetIORelease (buf->io);
         NetFreeBuffer (serv, buf);
@@ -192,6 +193,9 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
             if (iostatus && (int)NetIOWriteTo (io, buf->buffer, buf->buffer_length) <= 0) {
                 iostatus = 0;
                 NetIORelease (io->to);
+            }
+            if (serv->delegate && serv->delegate->didSendData) {
+                serv->delegate->didSendData (serv, io, buf, iostatus);
             }
             NetBufferRemoveIO (serv, buf);
             NetFreeBuffer (serv, buf);
@@ -253,6 +257,9 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         return;
     } else {
         Dlog ("[libdc] received %u bytes.\n", buffer->buffer_length);
+        if (srv->delegate && srv->delegate->didReceiveData) {
+            srv->delegate->didReceiveData (srv, buffer->io, buffer);
+        }
         // put data buffer into queue and wake up to process.
         if (IOConnected (io)) {
             NetIOLock (io);
@@ -273,10 +280,9 @@ DC_INLINE void ReleaseConnectionIO (NetIO_t *io, void *data)
     Net_t *net = (Net_t*)data;
 
     if (IOConnected (io)) {
-        
         Dlog ("[libdc] disconnect remote peer.\n");
-        if (net->delegate && net->delegate->willCloseNetIO) {
-            net->delegate->willCloseNetIO (net, io);
+        if (net->delegate && net->delegate->willDisconnectWithRemote) {
+            net->delegate->willDisconnectWithRemote (net, io);
         }
 
         IODisconnect (io);
@@ -311,16 +317,13 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
             NetIOUnlock (io);
             return;
         } else {
-/*
-            if (srv->delegate && srv->delegate->willAcceptRemoteNetIO ) {
-                if (!srv->delegate->willAcceptRemoteNetIO (srv, newio)) {
+            if (srv->delegate && srv->delegate->willAcceptRemote) {
+                if (!srv->delegate->willAcceptRemote(srv, io, newio)) {
                     NetIORelease (newio);
-                    NetIOUnlock (io);
                     return;
                 }
             }
-*/
-            
+
             NetIOCtrl (io, NET_IO_CTRL_GET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             NetIOCtrl (newio, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             NetIOCtrl (io, NET_IO_CTRL_GET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
@@ -329,7 +332,6 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
             NetIOCtrl (newio, NET_IO_CTRL_SET_RCVBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (io, NET_IO_CTRL_GET_SNDBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (newio, NET_IO_CTRL_SET_SNDBUF, &szbuf, sizeof (szbuf));
-            //NetIOCtrl (newio, NET_IO_CTRL_SET_NONBLOCK, NULL, 0);
 
             IOConnect (newio, io);
             newio->timer = srv->timer;
@@ -394,11 +396,19 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
                 if (NetIOBind (io, NULL, 0) < 0) {
                     NetIOClose (io);
                     return -1;
+                } else {
+                    if (serv->delegate && serv->delegate->didBindToLocal) {
+                        serv->delegate->didBindToLocal (serv, io);
+                    }
                 }
             } else {
                 if (NetIOConnect (io, NULL, 0) < 0) {
                     NetIOClose (io);
                     return -1;
+                } else {
+                    if (serv->delegate && serv->delegate->didBindToLocal) {
+                        serv->delegate->didBindToLocal (serv, io);
+                    }
                 }
             }
 
@@ -576,7 +586,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
     
     for (i=0; i<srv->config->num_sockets; i++) {
         io = NetGetIO (srv, i);
-        if (io->addr_info->net_flag & NET_F_BIND) {
+        if (srv->config->conn_timeout && io->addr_info->net_flag & NET_F_BIND) {
             if (DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) \
                 == THREAD_STAT_IDLE) {
                 DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
@@ -587,7 +597,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
                 continue;
             } else {
                 if (srv->delegate && srv->delegate->ping) {
-                    if (srv->delegate->ping (srv, buf)) {
+                    if (srv->delegate->ping (srv, io, buf)) {
                         NetBufferSetIO (srv, buf, io);
                         NetCommitIO (srv, io);
                     }
@@ -597,8 +607,8 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
         }
     }
 
-    if (srv->delegate && srv->delegate->timerout) {
-        srv->delegate->timerout (srv, srv->timer);
+    if (srv->delegate && srv->delegate->didReceiveTimer) {
+        srv->delegate->didReceiveTimer (srv, srv->timer);
     }
 }
 
@@ -626,14 +636,10 @@ DC_INLINE int RunNet (Net_t *serv)
     ev_signal_init (&sig_handler, SignalCallBack, SIGINT);
     ev_signal_start(serv->ev_loop, &sig_handler);
 
-    if (serv->delegate && serv->delegate->willRunNet) {
-        serv->delegate->willRunNet (serv);
-    }
-
     ev_loop (serv->ev_loop, 0);
 
-    if (serv->delegate && serv->delegate->willStopNet) {
-        serv->delegate->willStopNet (serv);
+    if (serv->delegate && serv->delegate->willCloseNet) {
+        serv->delegate->willCloseNet (serv);
     }
 
     ev_timer_stop (serv->ev_loop, &timer);

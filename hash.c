@@ -1,11 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <stdarg.h>
-
-#include "list.h"
-#include "hash.h"
-
+#include "libdc.h"
 
 struct hash_carrier {
     DC_key_t key;

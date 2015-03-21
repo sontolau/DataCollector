@@ -1,5 +1,4 @@
-#include <stdio.h>
-#include "link.h"
+#include "libdc.h"
 
 void __link_insert (DC_link_t *prev, DC_link_t *link, DC_link_t *next)
 {

@@ -1,5 +1,6 @@
-#include <sys/time.h>
-#include "notifier.h"
+#include "libdc.h"
+//#include <sys/time.h>
+//#include "notifier.h"
 
 int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *error)
 {

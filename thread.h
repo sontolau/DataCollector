@@ -83,6 +83,8 @@ typedef struct _DC_thread_pool_manager {
 
 extern int DC_thread_pool_manager_init (DC_thread_pool_manager_t *pool, int maxthreads, DC_error_t *error);
 
+extern int DC_thread_pool_manager_is_full (DC_thread_pool_manager_t *pool);
+
 extern int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
                                             void (*task) (struct _DC_task*, void *arg),
                                             void (*will_process) (struct _DC_task*, void*),

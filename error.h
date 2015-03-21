@@ -1,7 +1,7 @@
 #ifndef _DC_ERROR_H
 #define _DC_ERROR_H
 
-#include "libdc.h"
+//#include "libdc.h"
 
 #ifndef MAX_ERRBUF_LEN
 #define MAX_ERRBUF_LEN 500

@@ -9,12 +9,12 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
-
+/*
 #include "buffer.h"
 #include "queue.h"
 #include "mutex.h"
 #include "thread.h"
-
+*/
 enum {
     NET_TCP = 0,
     NET_UDP = 1,
@@ -134,6 +134,7 @@ enum {
 
 typedef struct _NetBuffer {
     NetIO_t      *io;
+    unsigned int buffer_id;
     unsigned int buffer_size;
     unsigned int buffer_length;
     DC_link_t    PRI(buffer_link);
@@ -141,6 +142,9 @@ typedef struct _NetBuffer {
         unsigned char buffer[0];
     };
 } NetBuffer_t;
+
+#define NetBufferSetID(_buf, _id) do {_buf->buffer_id = _id;}while (0)
+
 
 typedef struct _NetConfig {
     char *chdir;
@@ -230,16 +234,31 @@ enum {
 
 typedef struct _NetDelegate {
     void (*getNetAddressWithIndex) (Net_t *srv, NetAddr_t *net, int index);
+    int  (*willInitNet) (Net_t*);
+    void (*didConnectToHost) (Net_t *net, NetIO_t *remote);
+    void (*didBindToLocal) (Net_t *net, NetIO_t *local);
+    int  (*willAcceptRemote) (Net_t *net, const NetIO_t *local, NetIO_t *remote);
+    void (*didReceiveData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
+    void (*didSendData) (Net_t *srv, NetIO_t *io, NetBuffer_t *buf, int ok);
+    int  (*processData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
+    void (*willDisconnectWithRemote) (Net_t *srv, NetIO_t *remote);
+    void (*willCloseNet) (Net_t *net);
+    int  (*ping) (Net_t *net, NetIO_t *rmote, NetBuffer_t *buf);
+    void (*didReceiveTimer) (Net_t *net, unsigned int count);
+    void (*resourceUsage) (Net_t *net, int type, float percent);
+/*
     void (*timerout) (Net_t *srv, unsigned int timer);
     int  (*willInitNet) (Net_t *srv);
     void (*willRunNet) (Net_t *srv);
     int (*willAcceptRemoteNetIO) (Net_t *srv, NetIO_t *io);
     void (*willCloseNetIO) (Net_t *srv, NetIO_t *io);
+    void (*didSendBuffer) (Net_t *srv, NetBuffer_t *buf, int ok);
     int (*ping) (Net_t*srv, NetBuffer_t*buf);
     void (*willChangeStatus) (Net_t *srv, int status);
     int  (*processBuffer) (Net_t *srv, NetBuffer_t *buf);
     void (*willStopNet) (Net_t *srv);
     void (*resourceUsage) (Net_t *srv, int type, float percent);
+*/
 } NetDelegate_t;
 
 extern int NetRun (Net_t *serv, NetConfig_t *config, NetDelegate_t *delegate);

@@ -2,7 +2,6 @@
 #define _DC_MUTEX_H
 
 #include "libdc.h"
-#include "error.h"
 
 typedef struct _DC_attr {
 

@@ -17,6 +17,11 @@
 #include <sys/types.h>
 #include <errno.h>
 #include <pthread.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <fcntl.h>
 #endif
 
 #ifndef SZ_CLASS_NAME
@@ -64,5 +69,18 @@ typedef void* HDC;
 #ifndef Dlog
 #define Dlog(_fmt, ...)  fprintf(stderr, _fmt, ## __VA_ARGS__)
 #endif
+
+#include "error.h"
+#include "link.h"
+#include "dict.h"
+#include "hash.h"
+#include "list.h"
+#include "queue.h"
+#include "keyval.h"
+#include "buffer.h"
+#include "mutex.h"
+#include "thread.h"
+#include "notifier.h"
+#include "netio.h"
 
 #endif

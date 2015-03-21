@@ -1,4 +1,5 @@
-#include "queue.h"
+//#include "queue.h"
+#include "libdc.h"
 
 DC_INLINE int __get_queue_offset (qobject_t *curpos, qobject_t *startpos, int size)
 {

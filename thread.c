@@ -1,4 +1,4 @@
-#include "thread.h"
+#include "libdc.h"
 
 #define __set_thread_status(_thrd, _status) \
 do {\
@@ -284,6 +284,17 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
         DC_mutex_unlock (&pool->PRI (pool_mutex));
     }
     return ret;
+}
+
+int DC_thread_pool_manager_is_full (DC_thread_pool_manager_t *pool)
+{
+    int full = 0;
+
+    DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
+    full = DC_queue_is_empty (&pool->PRI (thread_queue));
+    DC_mutex_unlock (&pool->PRI (pool_mutex));
+
+    return full;
 }
 
 void DC_thread_pool_manager_destroy (DC_thread_pool_manager_t *pool)

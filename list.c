@@ -1,9 +1,4 @@
-#include <stdio.h>
-#include <stdlib.h>
-#include <stdarg.h>
-#include <string.h>
-
-#include "list.h"
+#include "libdc.h"
 
 struct list_carrier {
     void *obj;

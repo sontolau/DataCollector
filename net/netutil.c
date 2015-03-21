@@ -1,5 +1,6 @@
 #ifndef _LIBPNET_H
 #define _LIBPNET_H
+#include "libdc.h"
 
 DC_INLINE long __recv (int sock, unsigned char *buf, unsigned int size)
 {

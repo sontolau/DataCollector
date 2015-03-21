@@ -1,9 +1,4 @@
-#include <stdarg.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include "dict.h"
-
+#include "libdc.h"
 
 static unsigned int __dict_index_func (DC_key_t key) {
     char *strkey = (char*)key;

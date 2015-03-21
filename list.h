@@ -1,7 +1,7 @@
 #ifndef _DC_LIST_H
 #define _DC_LIST_H
 
-#include "libdc.h"
+//#include "libdc.h"
 #include "link.h"
 #include "error.h"
 

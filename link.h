@@ -1,7 +1,6 @@
 #ifndef _DC_LINK_H
 #define _DC_LINK_H
 
-#include "libdc.h"
 
 DC_CPP (extern "C" {)
 

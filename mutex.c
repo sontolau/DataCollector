@@ -1,4 +1,5 @@
-#include "mutex.h"
+//#include "mutex.h"
+#include "libdc.h"
 
 #define PMUTEX(x)   ((pthread_mutex_t*)&x)
 #define RWLOCK(x)   ((pthread_rwlock_t*)&x)

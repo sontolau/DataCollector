@@ -1,4 +1,4 @@
-#include "buffer.h"
+#include "libdc.h"
 
 int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
 {
