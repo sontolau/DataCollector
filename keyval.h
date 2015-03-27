@@ -11,6 +11,7 @@ enum {
     KV_TYPE_INT,
     KV_TYPE_FLOAT,
     KV_TYPE_LONG,
+    KV_TYPE_ID,
     KV_TYPE_DOUBLE,
     KV_TYPE_STRING,
     KV_TYPE_POINTER,
@@ -25,6 +26,7 @@ typedef struct _DC_keyval {
         int           int_value;
         float         float_value;
         long          long_value;
+        unsigned long long id_value;
         double        double_value;
         char          *string_value;
         void          *ptr_value;
