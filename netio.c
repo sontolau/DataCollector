@@ -514,14 +514,14 @@ DC_INLINE int InitNet (Net_t *serv)
         __NOW ("%Y-%m-%d %T", strtime, sizeof (strtime)-1);
         snprintf (logpath, sizeof (logpath)-1, "%s-%s.log", config->log, strtime);
         if ((serv->logfp = fopen (logpath, "a+"))) {
-            fclose (stderr);
-            fclose (stdout);
-            fclose (stdin);
-            stderr = stdout = stdin = serv->logfp;
+            setlinebuf (serv->logfp);
+            dup2 (fileno (serv->logfp), fileno (stderr));
+            dup2 (fileno (serv->logfp), fileno (stdout));
+            dup2 (fileno (serv->logfp), fileno (stdin));
         }
+    } else {
+        serv->logfp = stdout;
     }
-  
-    serv->logfp = stderr;
 
     if (delegate && delegate->willInitNet && delegate->willInitNet (serv) < 0) {
         Dlog ("[libdc] initialized system failed.\n");

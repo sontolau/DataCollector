@@ -67,7 +67,7 @@ typedef void* HDC;
 #endif
 
 #ifndef Dlog
-#define Dlog(_fmt, ...)  fprintf(stderr, _fmt, ## __VA_ARGS__)
+#define Dlog(_fmt, ...)  fprintf(stdout, _fmt, ## __VA_ARGS__)
 #endif
 
 #include "error.h"
