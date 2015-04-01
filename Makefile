@@ -4,7 +4,7 @@ CC=clang
 CFLAGS=-fPIC -Wall -g
 
 OBJS=error.o link.o list.o hash.o dict.o  queue.o buffer.o notifier.o mutex.o thread.o netio.o
-INCDIRS=-I./
+INCDIRS=-I./ -I/usr/include/libev
 
 all: ${LIB} 
 ${TESTAPP}: ${LIB}

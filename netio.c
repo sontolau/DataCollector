@@ -591,7 +591,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
                 == THREAD_STAT_IDLE) {
                 DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
             }
-        } else {
+        } else if (!(io->addr_info->net_flag & NET_F_BIND)) {
             if (!(buf = NetAllocBuffer (srv))) {
                 Dlog ("[libdc] out of memory at line: %d\n", __LINE__);
                 continue;
