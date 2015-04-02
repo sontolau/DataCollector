@@ -158,6 +158,7 @@ static void NetProcManager (DC_thread_t *thread,
 
     for (i=0; i<serv->config->num_process_threads && 
                 HasMoreBufferToBeProcessed (serv); i++) {
+        Dlog ("[libdc] INFO: need a task to process request[%d left].\n", serv->request_queue.length);
         DC_thread_pool_manager_run_task (&serv->core_proc_pool, 
                                          ProcessRequestCore, 
                                          NULL, 
