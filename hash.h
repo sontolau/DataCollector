@@ -47,6 +47,8 @@ extern int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj);
 
 extern void *DC_hash_get_object (DC_hash_t *hash, DC_key_t key);
 
+extern void **DC_hash_get_all_objects (const DC_hash_t *hash);
+
 extern void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key);
 
 extern void DC_hash_destroy (DC_hash_t *hash);
