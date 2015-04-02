@@ -22,14 +22,15 @@ int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *error)
     return ERR_OK;
 }
 
-int DC_notifier_wait (DC_notifier_t *notif, long time)
+int DC_notifier_wait (DC_notifier_t *notif, long time, int lockflag)
 {
     struct timeval now;
     struct timespec timedwait = {0,0};
     int ret = 0;
 
-    if (DC_mutex_lock (notif->PRI(notif_object), 0, 0) < 0) {
+    if (!lockflag && DC_mutex_lock (notif->PRI(notif_object), 0, 1) < 0) {
         fprintf (stderr, "The lock has been locked.\n");
+        return ERR_SYSTEM;
     }
 
     if (time) {
@@ -49,7 +50,11 @@ int DC_notifier_wait (DC_notifier_t *notif, long time)
         ret = pthread_cond_wait (&notif->PRI(notif_cond), 
                                  &notif->PRI(notif_object)->PRI(mutex_lock).PRI(mutex));
     }
-   
+  
+    if (!lockflag) {
+        DC_mutex_unlock (notif->PRI (notif_object));
+    }
+
     if (ret) {
         if (ret == ETIMEDOUT) {
             ret = ERR_TIMEDOUT;

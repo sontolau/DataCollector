@@ -19,7 +19,7 @@ extern int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *
 
 //extern int DC_notifier_wait_to_be_done (DC_notifier_t *notif);
 
-extern int DC_notifier_wait (DC_notifier_t *notif, long ms);
+extern int DC_notifier_wait (DC_notifier_t *notif, long ms, int lockflag);
 
 extern void DC_notifier_notify (DC_notifier_t *notif);
 

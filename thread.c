@@ -17,15 +17,16 @@ static void *__thread_cb (void *data)
     int ret;
 
     do {
-        ret = DC_notifier_wait (&thread->PRI (notif_object), 0);
+        DC_mutex_lock (&thread->PRI (thread_lock), 0, 1);
+        ret = DC_notifier_wait (&thread->PRI (notif_object), 0, 1);
         if (ret == 0 && (!thread->PRI (exit_flag))) {
             __set_thread_status (thread, THREAD_STAT_RUNNING);
             if (thread->PRI (thread_cb)) {
                 thread->PRI (thread_cb) ((struct _DC_thread*)thread, thread->user_data);
             }
             __set_thread_status (thread, THREAD_STAT_IDLE);
-            DC_mutex_unlock (&thread->PRI (thread_lock));
         } 
+        DC_mutex_unlock (&thread->PRI (thread_lock));
     } while (!thread->PRI (exit_flag));
     __set_thread_status (thread, THREAD_STAT_EXITED);
     return __thread_cb;
@@ -112,7 +113,7 @@ static void __thread_pool_status_cb (DC_thread_t *thread, void *userdata, int st
 
 static void __thread_task (DC_thread_t *thread, void *data)
 {
-    int num_wait = 0;
+    //int num_wait = 0;
     DC_task_t *task = (DC_task_t*)data;
     DC_thread_pool_manager_t *manager = task->PRI (pool_manager);
     if (task->will_process) {
@@ -128,7 +129,7 @@ static void __thread_task (DC_thread_t *thread, void *data)
     }
 
     DC_mutex_lock (&manager->PRI (pool_mutex), 0, 1);
-    num_wait = manager->PRI (num_wait);
+    //num_wait = manager->PRI (num_wait);
     DC_queue_push (&manager->PRI (thread_queue), (qobject_t)task->PRI (task_thread), 0);
     DC_mutex_unlock (&manager->PRI (pool_mutex));
     /*
@@ -228,14 +229,14 @@ static int __wait_for_idle_thread (DC_thread_pool_manager_t *pool,
     int ret = ERR_OK;
     
     while (DC_queue_is_empty (&pool->PRI (thread_queue))) {
-        fprintf (stderr, "Waiting to a task stop. ...... \n");
+        Dlog ("[libdc] WARN: thread pool is full, waiting for a task to be idle[%d tasks in progress] ...\n", pool->PRI (num_wait));
         pool->PRI (num_wait)++;
-        ret = DC_notifier_wait (&pool->PRI (task_notifier), timeout);
+        ret = DC_notifier_wait (&pool->PRI (task_notifier), timeout, 1);
         pool->PRI (num_wait)--;
         if (ret != ERR_OK) {
             break;
         }
-        fprintf (stderr, "A new task allocated.\n");
+        Dlog ("[libdc] INFO: a idle task has been fetched\n");
     }
 
     return ret;
@@ -256,13 +257,13 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
         DC_error_set (pool->error, ERR_SYSTEM, STRERR (ERR_SYSTEM));
         return ERR_SYSTEM;
     }
+   
     
     DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
     ret = __wait_for_idle_thread (pool, wait);
     if (ret == ERR_OK) {
-        //DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
         thrdptr = (DC_thread_t*)DC_queue_pop (&pool->PRI (thread_queue));
-
+        Dlog ("[libdc] INFO: there are still %d idle threads.\n", pool->PRI(thread_queue).length);
         task->PUB (task)        = task_core;
         task->PUB (will_process)= will_process;
         task->PUB (did_process) = did_process;
