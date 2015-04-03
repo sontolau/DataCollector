@@ -149,6 +149,7 @@ typedef struct _NetBuffer {
 typedef struct _NetConfig {
     char *chdir;
     char *log;
+    char *pidfile;
     int  daemon;
     int  num_sockets;
 
@@ -180,7 +181,7 @@ typedef struct _Net {
         DC_mutex_t       buf_lock;
     };
 
-    FILE           *logfp;
+    //FILE           *logfp;
     NetAddr_t      *net_addr_array;
     DC_queue_t     request_queue;
     DC_queue_t     reply_queue;

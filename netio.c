@@ -494,6 +494,38 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
     if (serv->net_addr_array) free (serv->net_addr_array);
 }
 
+DC_INLINE void WritePID (const char *path, pid_t pid)
+{
+    FILE *fp = NULL;
+
+    fp = fopen (path, "w");
+    if (fp == NULL) {
+        Dlog ("[libdc] WARN: can not create PID file [%s].\n", ERRSTR);
+        return;
+    }
+
+    fprintf (fp, "%u", pid);
+
+    fclose (fp);
+}
+
+DC_INLINE void SetLog (const char *logpath)
+{
+    FILE *log = NULL;
+
+    log = fopen (logpath, "w");
+    if (log == NULL) {
+        Dlog ("[libdc] WARN: can not create %s log file.\n", ERRSTR);
+        return;
+    }
+
+    setlinebuf (log);
+    dup2 (fileno (log), fileno (stderr));
+    dup2 (fileno (log), fileno (stdout));
+    dup2 (fileno (log), fileno (stdin));
+
+    fclose (log);
+}
 
 DC_INLINE int InitNet (Net_t *serv)
 {
@@ -501,27 +533,28 @@ DC_INLINE int InitNet (Net_t *serv)
     NetDelegate_t *delegate = serv->delegate;
     char          strtime[100] = {0};
     char          logpath[500] = {0};
+    pid_t         pid;
 
     Dlog ("[libdc] STARTING ... ...\n");
     srandom (time (NULL));
-    if (config->daemon && daemon (0, 1)) {
-        Dlog ("[libdc] can not fork sub process due to %s.\n", ERRSTR);
-        return -1;
+
+    if (config->daemon) {
+        pid = fork ();
+        if (pid > 0) {
+            exit (0);
+        } else if (pid < 0) {
+            Dlog ("[libdc] can not fork sub process due to %s.\n", ERRSTR);
+            return -1;
+        }
     }
 
     if (config->chdir) chdir (config->chdir);
+    if (config->pidfile) WritePID (config->pidfile, getpid ());
 
     if (config->log ) {
         __NOW ("%Y-%m-%d %T", strtime, sizeof (strtime)-1);
         snprintf (logpath, sizeof (logpath)-1, "%s-%s.log", config->log, strtime);
-        if ((serv->logfp = fopen (logpath, "a+"))) {
-            setlinebuf (serv->logfp);
-            dup2 (fileno (serv->logfp), fileno (stderr));
-            dup2 (fileno (serv->logfp), fileno (stdout));
-            dup2 (fileno (serv->logfp), fileno (stdin));
-        }
-    } else {
-        serv->logfp = stdout;
+        SetLog (logpath);
     }
 
     if (delegate && delegate->willInitNet && delegate->willInitNet (serv) < 0) {
@@ -662,7 +695,7 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
     DC_mutex_destroy (&serv->buf_lock);
     DC_mutex_destroy (&serv->PRI(serv_lock));
-    fclose (serv->logfp);
+    //fclose (serv->logfp);
     DC_thread_destroy (&serv->reply_thread);
     DC_thread_destroy (&serv->manager_thread);
     DC_thread_pool_manager_destroy (&serv->core_proc_pool);
