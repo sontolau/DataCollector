@@ -137,6 +137,7 @@ typedef struct _NetBuffer {
     unsigned int buffer_id;
     unsigned int buffer_size;
     unsigned int buffer_length;
+    void         *private_data;
     DC_link_t    PRI(buffer_link);
     union {
         unsigned char buffer[0];

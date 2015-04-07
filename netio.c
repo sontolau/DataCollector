@@ -137,25 +137,24 @@ DC_INLINE int NetIOHasNext (Net_t *serv, DC_queue_t *queue)
 
 static void ProcessRequestCore (DC_task_t *task ,void *data)
 {
-    Net_t *serv = (Net_t*)data;
-    NetBuffer_t *buf = NULL;
+    NetBuffer_t *buf = data;
+    Net_t *serv = buf->private_data;
 
-    while ((buf = GetBufferFromRequestQueue (serv))) {
-        //TODO: add code here to process request from remote.
-        if (serv->delegate && serv->delegate->processData) {
-            serv->delegate->processData (serv, buf->io, buf);
-        }
-        NetIORelease (buf->io);
-        NetFreeBuffer (serv, buf);
+    //TODO: add code here to process request from remote.
+    if (serv->delegate && serv->delegate->processData) {
+        serv->delegate->processData (serv, buf->io, buf);
     }
+    NetIORelease (buf->io);
+    NetFreeBuffer (serv, buf);
 }
+
 
 static void NetProcManager (DC_thread_t *thread,
                             void *data)
 {
-    Net_t *serv = (Net_t*)data;
-    int          i = 0;
-
+    //Net_t *serv = (Net_t*)data;
+    //int          i = 0;
+/*
     for (i=0; i<serv->config->num_process_threads && 
                 HasMoreBufferToBeProcessed (serv); i++) {
         Dlog ("[libdc] INFO: need a task to process request[%d left].\n", serv->request_queue.length);
@@ -165,6 +164,29 @@ static void NetProcManager (DC_thread_t *thread,
                                          NULL, 
                                          serv, 
                                          1);
+    }
+*/
+   
+    Net_t *serv = (Net_t*)data;
+    NetBuffer_t *buf = NULL;
+
+    while ((buf = GetBufferFromRequestQueue (serv))) {
+        Dlog ("[libdc] INFO: There are %d requests to be processed.\n", serv->request_queue.length);
+        buf->private_data = serv;
+        DC_thread_pool_manager_run_task (&serv->core_proc_pool,
+                                         ProcessRequestCore,
+                                         NULL,
+                                         NULL,
+                                         buf,
+                                         1);
+/*
+        //TODO: add code here to process request from remote.
+        if (serv->delegate && serv->delegate->processData) {
+            serv->delegate->processData (serv, buf->io, buf);
+        }
+        NetIORelease (buf->io);
+        NetFreeBuffer (serv, buf);
+*/
     }
 }
 
@@ -695,7 +717,6 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
     DC_mutex_destroy (&serv->buf_lock);
     DC_mutex_destroy (&serv->PRI(serv_lock));
-    //fclose (serv->logfp);
     DC_thread_destroy (&serv->reply_thread);
     DC_thread_destroy (&serv->manager_thread);
     DC_thread_pool_manager_destroy (&serv->core_proc_pool);
