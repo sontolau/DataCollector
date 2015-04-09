@@ -1,19 +1,23 @@
 #include "netutil.c"
-
+/*
 static int __ssl_verify_cb (int verify_ok, X509_STORE_CTX *ctx)
 {
     return verify_ok;
 }
+*/
 
 static int __TLS_init (NetIO_t *io, NetAddr_t *addr)
 {
-    int check_peer = 0;
-
-    OpenSSL_add_ssl_algorithms ();
-    SSL_load_error_strings ();
+    //int check_peer = 0;
     SSL_library_init ();
+    OpenSSL_add_all_algorithms ();
+    SSL_load_error_strings ();
 
-    io->ssl.ctx = SSL_CTX_new (SSLv23_method());
+    if (io->addr_info->net_flag & NET_F_SSL) {
+        io->ssl.ctx = SSL_CTX_new (SSLv23_server_method ());
+    } else {
+        io->ssl.ctx = SSL_CTX_new (SSLv23_client_method ());
+    }
     if (addr->net_ssl.cert && addr->net_ssl.key) {
         if (SSL_CTX_use_certificate_file (io->ssl.ctx,
                                           addr->net_ssl.cert,
@@ -27,7 +31,7 @@ static int __TLS_init (NetIO_t *io, NetAddr_t *addr)
             return -1;
         }
 
-        check_peer = 1;
+        //check_peer = 1;
     } 
     
     if (addr->net_ssl.CA && SSL_CTX_load_verify_locations (io->ssl.ctx, 
@@ -38,7 +42,11 @@ static int __TLS_init (NetIO_t *io, NetAddr_t *addr)
         return -1;
     }
 
-    SSL_CTX_set_verify_depth (io->ssl.ctx, 1);
+    if (io->addr_info->net_flag & NET_F_BIND) {
+        SSL_CTX_set_verify (io->ssl.ctx, SSL_VERIFY_PEER, NULL);
+        SSL_CTX_set_verify_depth (io->ssl.ctx, 1);
+    }
+
     io->ssl.ssl = SSL_new (io->ssl.ctx);
     SSL_set_fd (io->ssl.ssl, io->fd);
 
@@ -128,6 +136,10 @@ static int tcpWillAcceptRemoteIO (NetIO_t *io)
 
 static int tcpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *io)
 {
+    X509 *client_cert = NULL;
+    char *subject = NULL,
+         *issuer  = NULL;
+
     newio->fd = accept (io->fd, 
                         (struct sockaddr*)&newio->local_addr.ss, 
                         &newio->local_addr.sock_length);
@@ -143,6 +155,14 @@ static int tcpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *io)
             ERR_print_errors_fp (stderr);
             NetIOClose (newio);
             return -1;
+        } else {
+            client_cert = SSL_get_peer_certificate (newio->ssl.ssl);
+            Dlog ("[libdc] INFO: SSL accepts remote connection with SUBJECT: %s and ISSUER: %s.\n", 
+                  (subject = X509_NAME_oneline (X509_get_subject_name (client_cert), 0, 0)),
+                  (issuer  = X509_NAME_oneline (X509_get_issuer_name (client_cert), 0, 0)));
+            free (subject);
+            free (issuer);
+            X509_free (client_cert);
         }
     }
 
