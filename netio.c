@@ -279,7 +279,7 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         NetFreeBuffer (srv, buffer);
         return;
     } else {
-        Dlog ("[libdc] received %u bytes.\n", buffer->buffer_length);
+        Dlog ("[libdc] INFO: received %u bytes.\n", buffer->buffer_length);
         if (srv->delegate && srv->delegate->didReceiveData) {
             srv->delegate->didReceiveData (srv, buffer->io, buffer);
         }
@@ -303,7 +303,7 @@ DC_INLINE void ReleaseConnectionIO (NetIO_t *io, void *data)
     Net_t *net = (Net_t*)data;
 
     if (IOConnected (io)) {
-        Dlog ("[libdc] disconnect remote peer.\n");
+        Dlog ("[libdc] INFO: disconnect remote peer.\n");
         if (net->delegate && net->delegate->willDisconnectWithRemote) {
             net->delegate->willDisconnectWithRemote (net, io);
         }
@@ -557,7 +557,7 @@ DC_INLINE int InitNet (Net_t *serv)
     char          logpath[500] = {0};
     pid_t         pid;
 
-    Dlog ("[libdc] STARTING ... ...\n");
+    Dlog ("[libdc] INFO: STARTING ... ...\n");
     srandom (time (NULL));
 
     if (config->daemon) {
@@ -565,7 +565,7 @@ DC_INLINE int InitNet (Net_t *serv)
         if (pid > 0) {
             exit (0);
         } else if (pid < 0) {
-            Dlog ("[libdc] can not fork sub process due to %s.\n", ERRSTR);
+            Dlog ("[libdc] WARN: can not fork sub process due to %s.\n", ERRSTR);
             return -1;
         }
     }
@@ -580,7 +580,7 @@ DC_INLINE int InitNet (Net_t *serv)
     }
 
     if (delegate && delegate->willInitNet && delegate->willInitNet (serv) < 0) {
-        Dlog ("[libdc] initialized system failed.\n");
+        Dlog ("[libdc] ERROR: initialized system failed.\n");
         return -1;
     }
 
@@ -590,13 +590,13 @@ DC_INLINE int InitNet (Net_t *serv)
         (config->max_requests && DC_buffer_pool_init (&serv->net_io_pool,
                              config->max_requests,
                              sizeof (NetIO_t)) < 0)) {
-        Dlog ("[libdc] DC_buffer_pool_init failed at line:%d.\n", __LINE__);
+        Dlog ("[libdc] ERROR: DC_buffer_pool_init failed at line:%d.\n", __LINE__);
         return -1;
     }
 
     if (DC_mutex_init (&serv->buf_lock, 0, NULL, NULL) < 0 ||
         DC_mutex_init (&serv->PRI(serv_lock), 0, NULL, NULL) < 0) {
-        Dlog ("[libdc] DC_mutex_init failed at line:%d.\n", __LINE__);
+        Dlog ("[libdc] ERROR: DC_mutex_init failed at line:%d.\n", __LINE__);
         return -1;
     }
 
@@ -606,14 +606,14 @@ DC_INLINE int InitNet (Net_t *serv)
         DC_queue_init (&serv->reply_queue,
                        config->queue_size,
                        0) < 0) {
-        Dlog ("[libdc] DC_queue_init failed at line:%d.\n", __LINE__);
+        Dlog ("[libdc] ERROR: DC_queue_init failed at line:%d.\n", __LINE__);
         return -1;
     }
         
     if (DC_thread_init (&serv->manager_thread, NULL, NULL) <0 ||
         DC_thread_init (&serv->reply_thread, NULL, NULL) <0 ||
         DC_thread_init (&serv->conn_checker, NULL, NULL) < 0) {
-        Dlog ("[libdc] DC_thread_init failed at line:%d.\n", __LINE__);
+        Dlog ("[libdc] ERROR: DC_thread_init failed at line:%d.\n", __LINE__);
         return -1;
     }
 
@@ -621,7 +621,7 @@ DC_INLINE int InitNet (Net_t *serv)
                                      serv->config->num_process_threads?
                                      serv->config->num_process_threads:1, 
                                      NULL)) {
-        Dlog ("[libdc] DC_thread_pool_manager_init failed at line:%d.\n", __LINE__);
+        Dlog ("[libdc] ERROR: DC_thread_pool_manager_init failed at line:%d.\n", __LINE__);
         return -1;
     }
 
@@ -649,7 +649,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
             }
         } else if (!(io->addr_info->net_flag & NET_F_BIND)) {
             if (!(buf = NetAllocBuffer (srv))) {
-                Dlog ("[libdc] out of memory at line: %d\n", __LINE__);
+                Dlog ("[libdc] WARN: out of memory at line: %d\n", __LINE__);
                 continue;
             } else {
                 if (srv->delegate && srv->delegate->ping) {
@@ -680,7 +680,7 @@ DC_INLINE int RunNet (Net_t *serv)
     ev_signal sig_handler;
 
     if (CreateSocketIO (serv) < 0) {
-        Dlog ("[libdc] CreateSocketIO failed due to %s\n", ERRSTR);
+        Dlog ("[libdc] ERROR: CreateSocketIO failed due to %s\n", ERRSTR);
         return -1;
     }
 
@@ -708,7 +708,7 @@ DC_INLINE int RunNet (Net_t *serv)
 
 DC_INLINE void ReleaseNet (Net_t *serv)
 {
-    Dlog ("[libdc] QUITING ... ...\n");
+    Dlog ("[libdc] INFO: QUITING ... ...\n");
     NetLockContext (serv);
     ev_loop_destroy (serv->ev_loop);
     DC_queue_destroy (&serv->request_queue);

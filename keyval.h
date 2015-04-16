@@ -14,6 +14,7 @@ enum {
     KV_TYPE_ID,
     KV_TYPE_DOUBLE,
     KV_TYPE_STRING,
+    KV_TYPE_KEYVAL,
     KV_TYPE_POINTER,
 };
 
@@ -29,6 +30,7 @@ typedef struct _DC_keyval {
         unsigned long long id_value;
         double        double_value;
         char          *string_value;
+        struct _DC_keyval *keyval_value;
         void          *ptr_value;
     };
 } DC_keyval_t;
@@ -64,6 +66,8 @@ typedef struct _DC_keyval {
             case KV_TYPE_POINTER:\
                 _kv->ptr_value  = (void*)((long long)_val);\
                 break;\
+            case KV_TYPE_KEYVAL:\
+                _kv->keyval_value = (DC_keyval_t*)((long long)_val);\
             default:\
                 break;\
         }\
