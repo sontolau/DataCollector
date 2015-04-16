@@ -67,7 +67,17 @@ typedef void* HDC;
 #endif
 
 #ifndef Dlog
-#define Dlog(_fmt, ...)  fprintf(stdout, _fmt, ## __VA_ARGS__)
+#define Dlog(_fmt, ...)  \
+do {\
+    const char *__szenv_##__LINE__ = getenv ("LOG_SIZE");\
+    unsigned int __szlog_##__LINE__ = (__szenv_##__LINE__?strtoul (__szenv_##__LINE__, NULL, 10):10*1024*1024);\
+    if (ftell (stdout) >= __szlog_##__LINE__) {\
+        ftruncate (fileno (stdout), 0);\
+    }\
+\
+    fprintf(stdout, _fmt, ## __VA_ARGS__);\
+} while (0);
+
 #endif
 
 #include "error.h"
