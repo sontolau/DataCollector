@@ -68,6 +68,7 @@ typedef struct _DC_keyval {
                 break;\
             case KV_TYPE_KEYVAL:\
                 _kv->keyval_value = (DC_keyval_t*)((long long)_val);\
+                break;\
             default:\
                 break;\
         }\
