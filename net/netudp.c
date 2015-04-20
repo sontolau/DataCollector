@@ -263,62 +263,63 @@ static int udpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *srvio)
     return 0;
 }
 
-static long udpReadFromIO (NetIO_t *io, unsigned char *buf, unsigned int szbuf)
+//static long udpReadFromIO (NetIO_t *io, unsigned char *buf, unsigned int szbuf)
+static long udpReadFromIO (NetIO_t *io, NetBuffer_t *buf)
 {
     long szread = 0;
 
     if (io->addr_info->net_port == 0) {
         szread = __recvfrom (io->fd, 
-                             buf,
-                             szbuf, 
-                             (struct sockaddr*)&io->local_addr.su, 
-                             &io->local_addr.sock_length);
+                             buf->buffer,
+                             buf->buffer_size, 
+                             (struct sockaddr*)&buf->buffer_addr.su, 
+                             &buf->buffer_addr.sock_length);
     } else {
         if (io->addr_info->net_flag & NET_F_SSL) {
-            szread = __ssl_read (io->ssl.ssl, buf, szbuf);
+            szread = __ssl_read (io->ssl.ssl, buf->buffer, buf->buffer_size);
         } else if (io->addr_info->net_flag & NET_F_IPv6) {
             szread = __recvfrom (io->fd, 
-                                 buf,
-                                 szbuf,
-                                 (struct sockaddr*)&io->local_addr.s6, 
-                                 &io->local_addr.sock_length);
+                                 buf->buffer,
+                                 buf->buffer_size,
+                                 (struct sockaddr*)&buf->buffer_addr.s6, 
+                                 &buf->buffer_addr.sock_length);
         } else {
             szread = __recvfrom (io->fd, 
-                                 buf, 
-                                 szbuf, 
-                                 (struct sockaddr*)&io->local_addr.s4, 
-                                 &io->local_addr.sock_length);
+                                 buf->buffer, 
+                                 buf->buffer_size, 
+                                 (struct sockaddr*)&buf->buffer_addr.s4, 
+                                 &buf->buffer_addr.sock_length);
         }
     }
 
-    return szread;
+    return (buf->buffer_length = szread);
 }
 
-static long udpWriteToIO (const NetIO_t *io,const unsigned char *bytes, unsigned int length)
+static long udpWriteToIO (NetIO_t *io,const NetBuffer_t *buf)
 {
     double szsend = 0;
 
     if (io->addr_info->net_port == 0) {
        szsend = __sendto (io->fd, 
-                          bytes,
-                          length, 
-                          (struct sockaddr*)&io->local_addr.su, 
-                          io->local_addr.sock_length); 
+                          buf->buffer,
+                          buf->buffer_length, 
+                          (struct sockaddr*)&buf->buffer_addr.su, 
+                          buf->buffer_addr.sock_length); 
     } else {
         if (io->addr_info->net_flag & NET_F_SSL) {
-            szsend = __ssl_write (io->ssl.ssl, bytes, length);
+            szsend = __ssl_write (io->ssl.ssl, buf->buffer, buf->buffer_length);
         } else if (io->addr_info->net_flag & NET_F_IPv6) {
             szsend = __sendto (io->fd, 
-                               bytes,
-                               length, 
-                               (struct sockaddr*)&io->local_addr.s6, 
-                               io->local_addr.sock_length);
+                               buf->buffer,
+                               buf->buffer_length,
+                               (struct sockaddr*)&buf->buffer_addr.s6, 
+                               buf->buffer_addr.sock_length);
         } else {
             szsend = __sendto (io->fd, 
-                               bytes,
-                               length, 
-                               (struct sockaddr*)&io->local_addr.s4, 
-                               io->local_addr.sock_length);
+                               buf->buffer,
+                               buf->buffer_length, 
+                               (struct sockaddr*)&buf->buffer_addr.s4, 
+                               buf->buffer_addr.sock_length);
         }
     }
 

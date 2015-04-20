@@ -15,9 +15,9 @@ NetBuffer_t *NetAllocBuffer (Net_t *srv)
 {
     NetBuffer_t *buf = NULL;
 
-    if (srv->config->max_buffers) {
+    if (srv->config->num_sockbufs) {
         NetLockContext (srv);
-        BufferAlloc (srv, buf, NetBuffer_t, srv->net_buffer_pool, srv->config->buffer_size);
+        BufferAlloc (srv, buf, NetBuffer_t, srv->net_buffer_pool, srv->config->max_sockbuf_size);
         if (buf) {
             if (srv->delegate->resourceUsage) {
                 srv->delegate->resourceUsage (srv, 
@@ -28,12 +28,12 @@ NetBuffer_t *NetAllocBuffer (Net_t *srv)
         NetUnlockContext (srv);
     } else {
         buf = (NetBuffer_t*)calloc (1, 
-              sizeof (NetBuffer_t) + srv->config->buffer_size);
+              sizeof (NetBuffer_t) + srv->config->max_sockbuf_size);
     }
 
     if (buf) {
         buf->io          = NULL;
-        buf->buffer_size = srv->config->buffer_size;
+        buf->buffer_size = srv->config->max_sockbuf_size;
         buf->buffer_length = 0;
         memset (buf->buffer, '\0', buf->buffer_size);
     }
@@ -44,7 +44,7 @@ NetBuffer_t *NetAllocBuffer (Net_t *srv)
 
 void NetFreeBuffer (Net_t *srv, NetBuffer_t *buf)
 {
-    if (srv->config->max_buffers) {
+    if (srv->config->num_sockbufs) {
         NetLockContext (srv);
         BufferFree (srv, buf, srv->net_buffer_pool);
         if (srv->delegate->resourceUsage) {
@@ -64,7 +64,7 @@ NetIO_t *NetAllocIO (Net_t *srv)
 {
     NetIO_t *iobuf = NULL;
 
-    if (srv->config->max_requests) {
+    if (srv->config->num_sock_conns) {
         NetLockContext (srv);
         BufferAlloc (srv, iobuf, NetIO_t, srv->net_io_pool, sizeof (NetIO_t));
         if (iobuf) {
@@ -79,11 +79,12 @@ NetIO_t *NetAllocIO (Net_t *srv)
     } else {
        iobuf = (NetIO_t*)calloc (1, sizeof (NetIO_t));
     }
-   
+  
     Dlog ("[libdc] allocate IO : %p\n", iobuf);
     return iobuf;
 }
 
+/*
 void NetIORelease (NetIO_t *io)
 {
     io->refcount--;
@@ -100,10 +101,11 @@ NetIO_t *NetIOGet (NetIO_t *io)
     io->refcount++;
     return io;
 }
+*/
 
 void NetFreeIO (Net_t *srv, NetIO_t *io)
 {
-    if (srv->config->max_requests) {
+    if (srv->config->num_sock_conns) {
         NetLockContext (srv);
         BufferFree (srv, io, srv->net_io_pool);
         if (srv->delegate->resourceUsage) {
@@ -119,7 +121,7 @@ void NetFreeIO (Net_t *srv, NetIO_t *io)
     Dlog ("[libdc] free IO: %p\n", io);
 }
 
-
+/*
 void NetBufferSetIO (Net_t *srv, NetBuffer_t *buf, NetIO_t *io)
 {
     if (io) {
@@ -135,4 +137,4 @@ void NetBufferRemoveIO (Net_t *srv, NetBuffer_t *buf)
         DC_link_remove (&buf->PRI (buffer_link));
         buf->io = NULL;
     }
-}
+}*/

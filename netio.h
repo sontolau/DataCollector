@@ -50,14 +50,18 @@ typedef struct _NetAddr {
 
 } NetAddr_t;
 
+struct _NetBuffer;
+
 typedef struct _NetIOHandler {
     int (*netCreateIO) (struct _NetIO*);
     int (*netCtrlIO) (struct _NetIO*, int type, void *arg, int szarg);
     int (*willAcceptRemoteIO) (struct _NetIO*);
     int (*netCheckIO) (struct _NetIO*);
     int (*netAcceptRemoteIO) (struct _NetIO*,  const struct _NetIO*);
-    long (*netReadFromIO) (struct _NetIO*, unsigned char *buf, unsigned int szbuf);
-    long (*netWriteToIO) (const struct _NetIO*, const unsigned char *bytes, unsigned int len);
+    long (*netReadFromIO) (struct _NetIO*, struct _NetBuffer *buf);
+    long (*netWriteToIO) (struct _NetIO*, const struct _NetBuffer *buf);
+    //long (*netReadFromIO) (struct _NetIO*, unsigned char *buf, unsigned int szbuf);
+    //long (*netWriteToIO) (const struct _NetIO*, const unsigned char *bytes, unsigned int len);
     void (*netCloseIO) (struct _NetIO*);
 }NetIOHandler_t;
 
@@ -79,7 +83,7 @@ typedef struct _NetIO {
     NetAddr_t    *addr_info;
     int          connected;
     unsigned int timer;
-    int          refcount;
+    //int          refcount;
     NetSocketAddr_t local_addr;
     struct {
         SSL_CTX *ctx;
@@ -89,15 +93,14 @@ typedef struct _NetIO {
     void (*release_cb)(struct _NetIO *io, void*);
     void            *cb_data;
     DC_mutex_t      io_lock;
-    DC_link_t       PRI (buffer_link);
+    //DC_link_t       PRI (buffer_link);
     DC_link_t       PRI (conn_link);
     NetIOHandler_t* PRI (handler);
 } NetIO_t;
 
 extern int NetIOInit (NetIO_t *io, 
-                      const NetAddr_t *addr,
-                      void (*release)(NetIO_t*, void*),
-                      void*); 
+                      const NetAddr_t *addr);
+
 
 extern void NetIORelease (NetIO_t *io);
 /*
@@ -125,20 +128,23 @@ enum {
 
 #define NetIOAcceptRemote(_io, _to)       (_io->__handler->netAcceptRemoteIO (_to, _io))
 #define NetIOWillAcceptRemote(_io)        (_io->__handler->willAcceptRemoteIO (_io))
-#define NetIOReadFrom(_io, _buf, _szbuf)  (_io->__handler->netReadFromIO (_io, _buf, _szbuf))
-#define NetIOWriteTo(_io, _bytes, _blen)  (_io->__handler->netWriteToIO (_io, _bytes, _blen))
+#define NetIOReadFrom(_io, _buf)  (_io->__handler->netReadFromIO (_io, _buf))
+#define NetIOWriteTo(_io, _buf)  (_io->__handler->netWriteToIO (_io, _buf))
 #define NetIOClose(_io)                   (_io->__handler->netCloseIO(_io))
 #define NetIOLock(_io)                    do {DC_mutex_lock (&_io->io_lock, 0, 1);} while(0)
 #define NetIOUnlock(_io)                  do {DC_mutex_unlock (&_io->io_lock);} while (0)
 
+struct _NetProcQueue;
 
 typedef struct _NetBuffer {
     NetIO_t      *io;
     unsigned int buffer_id;
     unsigned int buffer_size;
     unsigned int buffer_length;
-    void         *private_data;
-    DC_link_t    PRI(buffer_link);
+    struct _NetProcQueue *queue;
+    //void         *private_data;
+    //DC_link_t    PRI(buffer_link);
+    NetSocketAddr_t buffer_addr;
     union {
         unsigned char buffer[0];
     };
@@ -153,12 +159,17 @@ typedef struct _NetConfig {
     char *pidfile;
     int  daemon;
     int  num_sockets;
-
-    int  max_requests;
-    int  max_buffers;
-    int  num_process_threads;
-    unsigned int buffer_size;
-    int  queue_size;
+    
+    int  num_sockbufs;
+    unsigned int max_sockbuf_size;
+    int num_sock_conns;
+    //int  max_requests;
+    //int  max_buffers;
+    int  num_threads_each_queue;
+    int  process_queue_size;
+    int  num_process_queues;
+    //unsigned int buffer_size;
+    //int  queue_size;
     unsigned int rw_timeout; //for receive and send timeout.
     unsigned int timer_interval;
     int  conn_timeout;
@@ -169,6 +180,18 @@ enum {
     NET_STAT_NORMAL = 2,
     NET_STAT_BUSY   = 3,
 };
+
+struct _Net;
+typedef struct _NetProcQueue {
+    struct _Net *net;
+    unsigned long long seqno;
+    DC_queue_t    request_queue;
+    DC_queue_t    reply_queue;
+    DC_mutex_t    lock;
+    DC_thread_t   manager_thread;
+    DC_thread_t   reply_thread;
+    DC_thread_pool_manager_t proc_pool;
+} NetProcQueue_t;
 
 typedef struct _Net {
     NetIO_t  *net_io;
@@ -184,13 +207,15 @@ typedef struct _Net {
 
     //FILE           *logfp;
     NetAddr_t      *net_addr_array;
-    DC_queue_t     request_queue;
-    DC_queue_t     reply_queue;
+    NetProcQueue_t *proc_queue_map;
 
-    DC_thread_t    reply_thread;
-    DC_thread_t    manager_thread;
+    //DC_queue_t     request_queue;
+    //DC_queue_t     reply_queue;
+
+    //DC_thread_t    reply_thread;
+    //DC_thread_t    manager_thread;
     DC_thread_t    conn_checker;
-    DC_thread_pool_manager_t  core_proc_pool;
+    //DC_thread_pool_manager_t  core_proc_pool;
 
     unsigned int   timer;
     NetConfig_t    *config;
@@ -217,17 +242,23 @@ extern NetIO_t *NetAllocIO (Net_t *net);
 extern void NetFreeIO (Net_t *net, NetIO_t *io);
 
 
-extern void NetCommitIO (Net_t *srv, NetIO_t *io);
+//extern void NetCommitIO (Net_t *srv, NetIO_t *io);
 
 extern NetBuffer_t *NetAllocBuffer (Net_t *srv);
 
 extern void NetFreeBuffer (Net_t *srv, NetBuffer_t *buf);
 
+extern void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue);
+
+extern void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue);
+
+/*
 extern void NetBufferSetRemote(NetBuffer_t *buf, NetSocketAddr_t *addr);
 
 extern void NetBufferSetIO (Net_t *srv, NetBuffer_t *buf, NetIO_t *io);
 
 extern void NetBufferRemoveIO (Net_t *srv, NetBuffer_t *buf);
+*/
 
 enum {
     RES_IO    = 1,
@@ -239,13 +270,15 @@ typedef struct _NetDelegate {
     int  (*willInitNet) (Net_t*);
     void (*didConnectToHost) (Net_t *net, NetIO_t *remote);
     void (*didBindToLocal) (Net_t *net, NetIO_t *local);
+    unsigned int (*getNetQueueWithHashID) (Net_t *net, NetBuffer_t *buf);
+
     int  (*willAcceptRemote) (Net_t *net, const NetIO_t *local, NetIO_t *remote);
     void (*didReceiveData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
-    void (*didSendData) (Net_t *srv, NetIO_t *io, NetBuffer_t *buf, int ok);
-    int  (*processData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
+    void (*didSendData) (Net_t *srv, NetBuffer_t *buf, NetProcQueue_t *queue, int ok);
+    int  (*processData) (Net_t *srv, NetBuffer_t *buf, NetProcQueue_t *queue);
     void (*willDisconnectWithRemote) (Net_t *srv, NetIO_t *remote);
     void (*willCloseNet) (Net_t *net);
-    int  (*ping) (Net_t *net, NetIO_t *rmote, NetBuffer_t *buf);
+    int  (*ping) (Net_t *net, NetBuffer_t *buf);
     void (*didReceiveTimer) (Net_t *net, unsigned int count);
     void (*resourceUsage) (Net_t *net, int type, float percent);
 /*

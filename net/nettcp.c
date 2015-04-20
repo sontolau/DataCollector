@@ -169,22 +169,22 @@ static int tcpAcceptRemoteIO (NetIO_t *newio, const NetIO_t *io)
     return 0;
 }
 
-static long tcpReadFromIO (NetIO_t *io, unsigned char *buf, unsigned int szbuf)
+static long tcpReadFromIO (NetIO_t *io, NetBuffer_t *buf)
 {
     if (io->addr_info->net_flag & NET_F_SSL) {
-        return SSL_read (io->ssl.ssl, buf, szbuf);
+        return SSL_read (io->ssl.ssl, buf->buffer, buf->buffer_size);
     }
 
-    return __recv (io->fd, buf, szbuf);
+    return __recv (io->fd, buf->buffer, buf->buffer_size);
 }
 
-static long tcpWriteToIO (const NetIO_t *io, const unsigned char *bytes, unsigned int len)
+static long tcpWriteToIO (NetIO_t *io, const NetBuffer_t *buf)
 {
     if (io->addr_info->net_flag & NET_F_SSL) {
-        return SSL_write (io->ssl.ssl, bytes, len);
+        return SSL_write (io->ssl.ssl, buf->buffer, buf->buffer_length);
     }
 
-    return __send (io->fd, bytes, len);
+    return __send (io->fd, buf->buffer, buf->buffer_length);
 }
 
 static void tcpCloseIO (NetIO_t *io)
