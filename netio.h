@@ -89,9 +89,11 @@ typedef struct _NetIO {
         SSL_CTX *ctx;
         SSL     *ssl;
     } ssl;
-
+    void        *private_data;
+/*
     void (*release_cb)(struct _NetIO *io, void*);
     void            *cb_data;
+*/
     DC_mutex_t      io_lock;
     //DC_link_t       PRI (buffer_link);
     DC_link_t       PRI (conn_link);
@@ -103,6 +105,9 @@ extern int NetIOInit (NetIO_t *io,
 
 
 extern void NetIORelease (NetIO_t *io);
+
+#define NetIOSetUserData(_io, _data) do {_io->private_data = _data;}while (0)
+#define NetIOGetUserData(_io)        (_io->private_data)
 /*
  * NetIOCtrl sets socket options.
  */
@@ -151,7 +156,7 @@ typedef struct _NetBuffer {
 } NetBuffer_t;
 
 #define NetBufferSetID(_buf, _id) do {_buf->buffer_id = _id;}while (0)
-
+#define NetBufferGetIO(_buf)  (_buf->io)
 
 typedef struct _NetConfig {
     char *chdir;
@@ -252,6 +257,10 @@ extern void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueu
 
 extern void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue);
 
+#define NetBufferSetIO(_buf, _io) \
+do {\
+    _buf->io = _io;\
+} while (0)
 /*
 extern void NetBufferSetRemote(NetBuffer_t *buf, NetSocketAddr_t *addr);
 

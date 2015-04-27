@@ -72,6 +72,7 @@ do {\
     const char *__szenv_##__LINE__ = getenv ("LOG_SIZE");\
     unsigned int __szlog_##__LINE__ = (__szenv_##__LINE__?strtoul (__szenv_##__LINE__, NULL, 10):10*1024*1024);\
     if (ftell (stdout) >= __szlog_##__LINE__) {\
+        rewind (stdout);\
         ftruncate (fileno (stdout), 0);\
     }\
 \

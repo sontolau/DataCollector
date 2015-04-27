@@ -126,6 +126,29 @@ void *DC_hash_get_object (DC_hash_t *hash, DC_key_t key) {
     return hc?hc->obj:NULL;
 }
 
+void **DC_hash_get_all_objects (const DC_hash_t *hash)
+{
+    void **objects = NULL;
+    int i, numobj=0;
+    void **listobjs = NULL;
+    int j,total = 0;
+
+    objects = (void**)calloc (hash->num_objects, sizeof (void*));
+
+    for (i=0; objects && i<hash->size; i++) {
+        listobjs = DC_list_to_array (hash->__hash_map[i], &numobj);
+        if (listobjs && numobj>0) {
+            for (j=0; j<numobj; j++) {
+                objects[total++] = listobjs[j];
+            }
+            free (listobjs);
+            numobj = 0;
+        }
+    }
+
+    return objects;
+}
+
 void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key) {
     struct hash_carrier *hc;
     DC_list_t *list;
