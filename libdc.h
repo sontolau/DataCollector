@@ -66,6 +66,15 @@ typedef void* HDC;
 #define __INOUT__
 #endif
 
+#ifndef MAX
+#define MAX(a,b)  (a>b?a:b)
+#endif
+
+#ifndef MIN
+#define MIN(a,b)  (a>b?b:a)
+#endif
+
+
 #ifndef Dlog
 #define Dlog(_fmt, ...)  \
 do {\

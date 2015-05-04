@@ -222,8 +222,8 @@ static void NetProcessReply (DC_thread_t *thread, void *data)
                 iostatus = 0;
                 NetIORelease (io->to);
             }
-            if (serv->delegate && serv->delegate->didSendData) {
-                serv->delegate->didSendData (serv, io, buf, iostatus);
+            if (serv->delegate && serv->delegate->didWriteData) {
+                serv->delegate->didWriteData (serv, io, buf, iostatus);
             }
             NetBufferRemoveIO (serv, buf);
             NetFreeBuffer (serv, buf);
@@ -272,6 +272,15 @@ DC_INLINE void NetProcCore (DC_thread_t *thread, void *data)
     } while (buf);
 }
 
+DC_INLINE long NetIOWrite (Net_t *net, NetIO_t *io, NetBuffer_t *buf)
+{
+    if (net->delegate && net->delegate->writeSocketData) {
+        return net->delegate->writeSocketData (net, io, buf);
+    }
+
+    return NetIOWriteTo (io, buf);
+}
+
 DC_INLINE void NetReplyCore (DC_thread_t *thread, void *data)
 {
     NetProcQueue_t *queue = (NetProcQueue_t*)data;
@@ -284,9 +293,9 @@ DC_INLINE void NetReplyCore (DC_thread_t *thread, void *data)
         buf = (NetBuffer_t*)DC_queue_pop (&queue->reply_queue);
         DC_mutex_unlock (&queue->lock);
         if (buf) {
-            status = NetIOWriteTo (buf->io, buf);
-            if (net->delegate && net->delegate->didSendData) {
-                net->delegate->didSendData (net, buf, queue, status?0:1);
+            status = NetIOWrite (net, buf->io, buf);
+            if (net->delegate && net->delegate->didWriteData) {
+                net->delegate->didWriteData (net, buf, queue, status?0:1);
             }
             if (status <= 0) {
                 NetCloseIO (net, buf->io);
@@ -296,7 +305,8 @@ DC_INLINE void NetReplyCore (DC_thread_t *thread, void *data)
     } while (buf);
 }
 
-void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
+//void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
+void NetAddIncomingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
 {
     DC_mutex_lock (&queue->lock, 0, 1);
     DC_queue_push (&queue->request_queue, (qobject_t)buf, 1);
@@ -307,7 +317,8 @@ void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *qu
     DC_mutex_unlock (&queue->lock);
 }
 
-void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
+//void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
+void NetAddOutgoingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
 {
     DC_mutex_lock (&queue->lock, 0, 1);
     DC_queue_push (&queue->reply_queue, (qobject_t)buf, 1);
@@ -340,6 +351,15 @@ DC_INLINE NetProcQueue_t *GetProcQueueByHashID (Net_t *net,
     return &map[hash_id % num];
 }
 
+DC_INLINE int NetIORead (Net_t *net, NetIO_t *io, NetBuffer_t *buf)
+{
+    if (net->delegate && net->delegate->readSocketData) {
+        return net->delegate->readSocketData (net, io, buf);
+    }
+
+    return NetIOReadFrom (io, buf);
+}
+
 
 DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
 {
@@ -354,15 +374,14 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         return;
     } else {
         buffer->io = io;
-        buffer->buffer_size = srv->config->max_sockbuf_size;
-        buffer->buffer_length = 0;
-
-        memset (buffer->buffer, '\0', buffer->buffer_size);
+        //buffer->buffer_size = srv->config->max_sockbuf_size;
+        //buffer->buffer_length = 0;
+        //buffer->buffer_offset = 0;
+        //memset (buffer->buffer, '\0', buffer->buffer_size);
     }
 
     // read data.
-    if ((int)(buffer->buffer_length = NetIOReadFrom  (buffer->io, 
-                                                      buffer)) <= 0) {
+    if ((int)(buffer->buffer_length = NetIORead (srv, buffer->io, buffer)) <= 0) {
         //TODO:
         NetCloseIO (srv, io);
         if (buffer->io->to) {
@@ -372,8 +391,8 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         return;
     } else {
         Dlog ("[libdc] INFO: received %u bytes.\n", buffer->buffer_length);
-        if (srv->delegate && srv->delegate->didReceiveData) {
-            srv->delegate->didReceiveData (srv, buffer->io, buffer);
+        if (srv->delegate && srv->delegate->didReadData) {
+            srv->delegate->didReadData (srv, buffer->io, buffer);
         }
         // put data buffer into queue and wake up to process.
         if (IOConnected (io)) {
@@ -388,7 +407,7 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
                                            srv->config->num_process_queues,
                                            buffer);
         
-        NetPutRequestBuffer (srv, buffer, proc_queue);
+        NetAddIncomingData (srv, buffer, proc_queue);
     }
 }
 
@@ -789,7 +808,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
                                                       srv->proc_queue_map,
                                                       srv->config->num_process_queues,
                                                       buf);
-                        NetPutReplyBuffer (srv, buf, queue);
+                        NetAddOutgoingData (srv, buf, queue);
                     }
                 }
                 NetFreeBuffer (srv, buf);
