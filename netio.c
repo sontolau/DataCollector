@@ -375,13 +375,13 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     } else {
         buffer->io = io;
         //buffer->buffer_size = srv->config->max_sockbuf_size;
-        //buffer->buffer_length = 0;
+        //buffer->data_length = 0;
         //buffer->buffer_offset = 0;
         //memset (buffer->buffer, '\0', buffer->buffer_size);
     }
 
     // read data.
-    if ((int)(buffer->buffer_length = NetIORead (srv, buffer->io, buffer)) <= 0) {
+    if ((int)(buffer->data_length = NetIORead (srv, buffer->io, buffer)) <= 0) {
         //TODO:
         NetCloseIO (srv, io);
         if (buffer->io->to) {
@@ -390,7 +390,7 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
         NetFreeBuffer (srv, buffer);
         return;
     } else {
-        Dlog ("[libdc] INFO: received %u bytes.\n", buffer->buffer_length);
+        Dlog ("[libdc] INFO: received %u bytes.\n", buffer->data_length);
         if (srv->delegate && srv->delegate->didReadData) {
             srv->delegate->didReadData (srv, buffer->io, buffer);
         }
@@ -432,7 +432,7 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
 {
     NetIO_t *io   = (NetIO_t*)w->data;
     Net_t *srv    = (Net_t*)ev_userdata (ev);
-    struct timeval rwtimeo = {0, 0};
+    //struct timeval rwtimeo = {0, 0};
     unsigned int szbuf = 0;
 
     NetIO_t *newio = NetAllocIO (srv);
@@ -458,11 +458,12 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
                     return;
                 }
             }
-
+/*
             NetIOCtrl (io, NET_IO_CTRL_GET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             NetIOCtrl (newio, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             NetIOCtrl (io, NET_IO_CTRL_GET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             NetIOCtrl (newio, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
+*/
             NetIOCtrl (io, NET_IO_CTRL_GET_RCVBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (newio, NET_IO_CTRL_SET_RCVBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (io, NET_IO_CTRL_GET_SNDBUF, &szbuf, sizeof (szbuf));
@@ -477,6 +478,7 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
                         EV_READ);
             ev_io_start (srv->ev_loop, &newio->ev);
             NetIOUnlock (io);
+            Dlog ("[Libdc] INFO: a new client has been accpted.\n");
         }
     }
 }
@@ -487,8 +489,10 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
     int i;
     NetIO_t *io;
     NetConfig_t *netcfg = serv->config;
+/*
     struct timeval rwtimeo =  {(int)(netcfg->rw_timeout/1000), 
                                (netcfg->rw_timeout % 1000)*1000};
+*/
     int            flag = 1;
 
     serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_sockets, sizeof (NetAddr_t));
@@ -512,10 +516,13 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
         if (NetIOCreate (io) < 0) {
             return -1;
         } else {
+/*
             if (netcfg->rw_timeout) {
                 NetIOCtrl (io, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
                 NetIOCtrl (io, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
             }
+*/
+            NetIOCtrl (io, NET_IO_CTRL_SET_NONBLOCK, NULL, 0);
 
             if (netcfg->max_sockbuf_size) {
                 NetIOCtrl (io, NET_IO_CTRL_SET_SNDBUF, &netcfg->max_sockbuf_size, sizeof (int));
@@ -556,6 +563,7 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
     return 0;
 }
 
+#define WATCH_DOG_TIMEOUT(x) (x & 0x00FF)
 DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
 {
     Net_t *net = (Net_t*)data;
@@ -582,7 +590,7 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
         linkptr = local_io->PRI (conn_link).prev;
         while (linkptr && linkptr != &local_io->PRI (conn_link)) {
             io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
-            if (net->timer - io->timer < net->config->conn_timeout) {
+            if (net->timer - io->timer < WATCH_DOG_TIMEOUT (net->config->watch_dog)) {
                 break;
             }
 
@@ -604,7 +612,7 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
         while (linkptr && linkptr != &expired_link) {
             tmplink = linkptr->next;
             io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
-            //NetIORelease (io);
+            Dlog ("[libdc] INFO: a client will be disconnected due to timeout of transaction.\n");
             NetCloseIO (net, io);
             NetFreeIO (net, io);
             linkptr = tmplink;
@@ -790,7 +798,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
     
     for (i=0; i<srv->config->num_sockets; i++) {
         io = NetGetIO (srv, i);
-        if (srv->config->conn_timeout && io->addr_info->net_flag & NET_F_BIND) {
+        if (srv->config->watch_dog && io->addr_info->net_flag & NET_F_BIND) {
             if (DC_thread_get_status (((DC_thread_t*)&srv->conn_checker)) \
                 == THREAD_STAT_IDLE) {
                 DC_thread_run (&srv->conn_checker, CheckNetIOConn, srv);
@@ -826,7 +834,7 @@ DC_INLINE void SignalCallBack (struct ev_loop *ev, ev_signal *w, int revents)
     ev_break (ev, EVBREAK_ALL);
 }
 
-
+#define WATCH_DOG_DELAY(x) ((x & 0xFF00)>>16)
 DC_INLINE int RunNet (Net_t *serv)
 {
     ev_timer  timer;
@@ -838,7 +846,7 @@ DC_INLINE int RunNet (Net_t *serv)
     }
 
     timer.data = serv;
-    ev_timer_init (&timer, TimerCallBack, serv->config->timer_interval, 1);
+    ev_timer_init (&timer, TimerCallBack, WATCH_DOG_DELAY(serv->config->watch_dog), 1);
     ev_timer_start (serv->ev_loop, &timer);
 
     sig_handler.data = serv;

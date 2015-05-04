@@ -135,21 +135,28 @@ struct _NetProcQueue;
 
 typedef struct _NetBuffer {
     NetIO_t      *io;
-    unsigned int buffer_id;
-    unsigned int buffer_size;
-    unsigned int buffer_length;
-    unsigned int buffer_offset;
+    unsigned int id;
+    unsigned int size;
+    unsigned int data_length;
+    unsigned int offset;
     struct _NetProcQueue *queue;
     NetSocketAddr_t buffer_addr;
     union {
+        void *extra_pointer;
+        int   extra_int;
+    };
+    void *buffer;
+/*
+    union {
         unsigned char buffer[0];
     };
+*/
 } NetBuffer_t;
 
 
-#define NetBufferSetID(_buf, _id) do {_buf->buffer_id = _id;}while (0)
+#define NetBufferSetID(_buf, _id) do {_buf->id = _id;}while (0)
 #define NetBufferGetIO(_buf)  (_buf->io)
-#define NetBuffetGetID(_buf)  (_buf->buffer_id)
+#define NetBuffetGetID(_buf)  (_buf->id)
 #define NetBufferSetIO(_buf, _io) \
 do {\
     _buf->io = _io;\
@@ -157,8 +164,8 @@ do {\
 
 #define NetBufferSetData(_buf, _off, _data, _size) \
 do {\
-    memcpy (_buf->buffer+_off, _data, MIN(_buf->buffer_size-_off, _size));\
-    _buf->buffer_length = MIN (_buf->buffer_size-_off, _size)\
+    memcpy (_buf->buffer+_off, _data, MIN(_buf->size-_off, _size));\
+    _buf->data_length = MIN (_buf->size-_off, _size)\
 } while (0)
 #define NetBufferSetString(_buf, _off, _str) NetBufferSetData(_buf, _off, (void*)_str, strlen (_str))
 
@@ -175,10 +182,11 @@ typedef struct _NetConfig {
     int  num_threads_each_queue;
     int  process_queue_size;
     int  num_process_queues;
-    unsigned int rw_timeout; //for receive and send timeout.
-    unsigned int timer_interval;
-    int  conn_timeout;
+    //unsigned int rw_timeout; //for receive and send timeout.
+    unsigned int  watch_dog;
 } NetConfig_t;
+
+#define WATCH_DOG(_delay, _timeout) (((_delay&0xFF)<<16)|(_timeout&0xFF))
 
 enum {
     NET_STAT_IDLE   = 1,
@@ -258,7 +266,7 @@ typedef struct _NetDelegate {
     unsigned int (*getNetQueueWithHashID) (Net_t *net, NetBuffer_t *buf);
 
     int  (*willAcceptRemote) (Net_t *net, const NetIO_t *local, NetIO_t *remote);
-    long  (*readSocketData) (Net_t *net, const NetIO_t *local, NetBuffer_t *buf);
+    long  (*readSocketData) (Net_t *net, NetIO_t *io, NetBuffer_t *buf);
     void (*didReadData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
     long (*writeSocketData) (Net_t *srv, NetIO_t *to, NetBuffer_t *buf);
 

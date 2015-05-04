@@ -32,11 +32,12 @@ NetBuffer_t *NetAllocBuffer (Net_t *srv)
     }
 
     if (buf) {
-        buf->io          = NULL;
-        buf->buffer_size = srv->config->max_sockbuf_size;
-        buf->buffer_length = 0;
-        buf->buffer_offset = 0;
-        memset (buf->buffer, '\0', buf->buffer_size);
+        buf->io            = NULL;
+        buf->size   = srv->config->max_sockbuf_size;
+        buf->data_length = 0;
+        buf->offset = 0;
+        buf->buffer = (unsigned char*)buf+sizeof (NetBuffer_t);
+        memset (buf->buffer, '\0', buf->size);
     }
     Dlog ("[libdc] allocate system buffer: %p\n", buf);
 

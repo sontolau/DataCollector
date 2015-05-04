@@ -270,29 +270,29 @@ static long udpReadFromIO (NetIO_t *io, NetBuffer_t *buf)
 
     if (io->addr_info->net_port == 0) {
         szread = __recvfrom (io->fd, 
-                             buf->buffer+buf->buffer_offset,
-                             buf->buffer_size-buf->buffer_offset, 
+                             buf->buffer+buf->offset,
+                             buf->size-buf->offset, 
                              (struct sockaddr*)&buf->buffer_addr.su, 
                              &buf->buffer_addr.sock_length);
     } else {
         if (io->addr_info->net_flag & NET_F_SSL) {
-            szread = __ssl_read (io->ssl.ssl, buf->buffer+buf->buffer_offset, buf->buffer_size-buf->buffer_offset);
+            szread = __ssl_read (io->ssl.ssl, buf->buffer+buf->offset, buf->size-buf->offset);
         } else if (io->addr_info->net_flag & NET_F_IPv6) {
             szread = __recvfrom (io->fd, 
-                                 buf->buffer+buf->buffer_offset,
-                                 buf->buffer_size-buf->buffer_offset,
+                                 buf->buffer+buf->offset,
+                                 buf->size-buf->offset,
                                  (struct sockaddr*)&buf->buffer_addr.s6, 
                                  &buf->buffer_addr.sock_length);
         } else {
             szread = __recvfrom (io->fd, 
-                                 buf->buffer+buf->buffer_offset, 
-                                 buf->buffer_size-buf->buffer_offset, 
+                                 buf->buffer+buf->offset, 
+                                 buf->size-buf->offset, 
                                  (struct sockaddr*)&buf->buffer_addr.s4, 
                                  &buf->buffer_addr.sock_length);
         }
     }
 
-    return (buf->buffer_length = szread);
+    return (buf->data_length = szread);
 }
 
 static long udpWriteToIO (NetIO_t *io,const NetBuffer_t *buf)
@@ -301,23 +301,23 @@ static long udpWriteToIO (NetIO_t *io,const NetBuffer_t *buf)
 
     if (io->addr_info->net_port == 0) {
        szsend = __sendto (io->fd, 
-                          buf->buffer+buf->buffer_offset,
-                          buf->buffer_length, 
+                          buf->buffer+buf->offset,
+                          buf->data_length, 
                           (struct sockaddr*)&buf->buffer_addr.su, 
                           buf->buffer_addr.sock_length); 
     } else {
         if (io->addr_info->net_flag & NET_F_SSL) {
-            szsend = __ssl_write (io->ssl.ssl, buf->buffer+buf->buffer_offset, buf->buffer_length);
+            szsend = __ssl_write (io->ssl.ssl, buf->buffer+buf->offset, buf->data_length);
         } else if (io->addr_info->net_flag & NET_F_IPv6) {
             szsend = __sendto (io->fd, 
-                               buf->buffer+buf->buffer_offset,
-                               buf->buffer_length,
+                               buf->buffer+buf->offset,
+                               buf->data_length,
                                (struct sockaddr*)&buf->buffer_addr.s6, 
                                buf->buffer_addr.sock_length);
         } else {
             szsend = __sendto (io->fd, 
-                               buf->buffer+buf->buffer_offset,
-                               buf->buffer_length, 
+                               buf->buffer+buf->offset,
+                               buf->data_length, 
                                (struct sockaddr*)&buf->buffer_addr.s4, 
                                buf->buffer_addr.sock_length);
         }

@@ -149,17 +149,17 @@ DC_INLINE long __ssl_write (SSL *ssl, const unsigned char *buf, unsigned int szb
     return -1;
 }
 
-DC_INLINE void __set_nonblock (int fd)
+DC_INLINE int __set_nonblock (int fd)
 {
     int flag = 0;
 
     if ((flag = fcntl (fd, F_GETFL)) < 0) {
-        return;
+        return -1;
     }
 
     flag |= O_NONBLOCK;
 
-    fcntl (fd, F_SETFL, &flag);
+    return fcntl (fd, F_SETFL, &flag);
 }
 
 DC_INLINE void __NOW (const char *timefmt, char buf[], int szbuf)
@@ -196,6 +196,8 @@ DC_INLINE int __sock_ctrl (int fd, int type, void *arg, int szarg)
             return getsockopt (fd, SOL_SOCKET, SO_RCVBUF, arg, &len);
         case NET_IO_CTRL_GET_SNDBUF:
             return getsockopt (fd, SOL_SOCKET, SO_SNDBUF, arg, &len);
+        case NET_IO_CTRL_SET_NONBLOCK:
+            return __set_nonblock (fd);
         default:
             break;
     }
