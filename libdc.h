@@ -11,6 +11,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <stdarg.h>
 
 #ifdef OS_WINDOWS
 #else
@@ -101,6 +102,8 @@ do {\
 #include "mutex.h"
 #include "thread.h"
 #include "notifier.h"
-#include "netio.h"
+
+
+//#include "netio.h"
 
 #endif

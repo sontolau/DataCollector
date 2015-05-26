@@ -182,7 +182,6 @@ typedef struct _NetConfig {
     int  num_threads_each_queue;
     int  process_queue_size;
     int  num_process_queues;
-    //unsigned int rw_timeout; //for receive and send timeout.
     unsigned int  watch_dog;
 } NetConfig_t;
 
@@ -237,7 +236,7 @@ typedef Net_t NetServer_t;
 #define NetLockContext(srv)      do { DC_mutex_lock (&srv->PRI (serv_lock), 0, 1);}while (0)
 #define NetUnlockContext(srv)    do { DC_mutex_unlock (&srv->PRI (serv_lock));} while (0)
 #define NetGetIO(srv, index)    (&srv->net_io[index])
-#define NetSetUserData(srv, data)        do{srv->private_data = data;}while(0);
+#define NetSetUserData(srv, data)        do{srv->private_data = data;}while(0)
 #define NetGetUserData(srv)              (srv->private_data)
 #define NetGetStatus(srv)                (srv->status)
 

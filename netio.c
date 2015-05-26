@@ -12,6 +12,7 @@
 #include "netio.h"
 */
 #include "libdc.h"
+#include "netio.h"
 #include "net/nettcp.c"
 #include "net/netudp.c"
 #include "net/netcomm.c"
@@ -458,12 +459,6 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
                     return;
                 }
             }
-/*
-            NetIOCtrl (io, NET_IO_CTRL_GET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-            NetIOCtrl (newio, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-            NetIOCtrl (io, NET_IO_CTRL_GET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-            NetIOCtrl (newio, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-*/
             NetIOCtrl (io, NET_IO_CTRL_GET_RCVBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (newio, NET_IO_CTRL_SET_RCVBUF, &szbuf, sizeof (szbuf));
             NetIOCtrl (io, NET_IO_CTRL_GET_SNDBUF, &szbuf, sizeof (szbuf));
@@ -653,7 +648,7 @@ DC_INLINE void SetLog (const char *logpath)
 {
     FILE *log = NULL;
 
-    log = fopen (logpath, "w");
+    log = fopen (logpath, "w+");
     if (log == NULL) {
         Dlog ("[libdc] WARN: can not create %s log file.\n", ERRSTR);
         return;
@@ -720,8 +715,8 @@ DC_INLINE int InitNet (Net_t *serv)
 {
     NetConfig_t *config     = serv->config;
     NetDelegate_t *delegate = serv->delegate;
-    char          strtime[100] = {0};
-    char          logpath[500] = {0};
+    //char          strtime[100] = {0};
+    //char          logpath[500] = {0};
     pid_t         pid;
 
     Dlog ("[libdc] INFO: STARTING ... ...\n");
@@ -740,10 +735,10 @@ DC_INLINE int InitNet (Net_t *serv)
     if (config->chdir) chdir (config->chdir);
     if (config->pidfile) WritePID (config->pidfile, getpid ());
 
-    if (config->log ) {
-        __NOW ("%Y-%m-%d %T", strtime, sizeof (strtime)-1);
-        snprintf (logpath, sizeof (logpath)-1, "%s-%s.log", config->log, strtime);
-        SetLog (logpath);
+    if (config->log) {
+        //__NOW ("%Y-%m-%d %T", strtime, sizeof (strtime)-1);
+        //snprintf (logpath, sizeof (logpath)-1, "%s-%s.log", config->progname, strtime);
+        SetLog (config->log);
     }
 
     if (delegate && delegate->willInitNet && delegate->willInitNet (serv) < 0) {
