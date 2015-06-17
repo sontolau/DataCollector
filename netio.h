@@ -9,12 +9,7 @@
 #include <openssl/err.h>
 #include <openssl/rand.h>
 #include <openssl/x509.h>
-/*
-#include "buffer.h"
-#include "queue.h"
-#include "mutex.h"
-#include "thread.h"
-*/
+
 enum {
     NET_TCP = 0,
     NET_UDP = 1,
@@ -74,6 +69,8 @@ typedef struct _NetSocketAddr {
     socklen_t sock_length;
 }NetSocketAddr_t;
 
+
+struct _NetBuffer;
 typedef struct _NetIO {
     int          fd;
     struct ev_io ev;
@@ -89,14 +86,15 @@ typedef struct _NetIO {
     void        *private_data;
     DC_mutex_t      io_lock;
     DC_link_t       PRI (conn_link);
+    DC_link_t       PRI (buffer_link);
     NetIOHandler_t* PRI (handler);
 } NetIO_t;
 
 extern int NetIOInit (NetIO_t *io, 
                       const NetAddr_t *addr);
+extern void NetIODestroy (NetIO_t *io);
 
-
-extern void NetIORelease (NetIO_t *io);
+extern struct _NetBuffer *NetIOBufferFetch (NetIO_t *io);
 
 #define NetIOSetUserData(_io, _data) do {_io->private_data = _data;}while (0)
 #define NetIOGetUserData(_io)        (_io->private_data)
@@ -120,7 +118,8 @@ enum {
 
 #define NetIOCreate(_io)                  (_io->__handler->netCreateIO (_io))
 #define NetIOCtrl(_io, _type, _arg, _szarg) (_io->__handler->netCtrlIO (_io, _type, _arg, _szarg))
-#define NetIOConnect(_io, _addr, _addrlen) (NetIOCtrl (_io, NET_IO_CTRL_CONNECT, _addr, _addrlen))
+#define NetIOConnectRemote(_io, _addr, _addrlen) (NetIOCtrl (_io, NET_IO_CTRL_CONNECT, _addr, _addrlen))
+#define NetIOConnect(_io) NetIOConnectRemote(_io, NULL, 0)
 #define NetIOBind(_io, _addr, _addrlen)    (NetIOCtrl (_io, NET_IO_CTRL_BIND, _addr, _addrlen))
 
 #define NetIOAcceptRemote(_io, _to)       (_io->__handler->netAcceptRemoteIO (_to, _io))
@@ -131,43 +130,61 @@ enum {
 #define NetIOLock(_io)                    do {DC_mutex_lock (&_io->io_lock, 0, 1);} while(0)
 #define NetIOUnlock(_io)                  do {DC_mutex_unlock (&_io->io_lock);} while (0)
 
-struct _NetProcQueue;
-
 typedef struct _NetBuffer {
     NetIO_t      *io;
     unsigned int id;
     unsigned int size;
     unsigned int data_length;
     unsigned int offset;
-    struct _NetProcQueue *queue;
+    DC_link_t  PRI(io_link);
     NetSocketAddr_t buffer_addr;
     union {
-        void *extra_pointer;
-        int   extra_int;
-    };
-    void *buffer;
-/*
-    union {
+        int   int_value;
+        void *pointer;
         unsigned char buffer[0];
     };
-*/
 } NetBuffer_t;
 
+#define NetBufferAlloc(_buf, _size) \
+do {\
+    _buf = (NetBuffer_t*)calloc (1, sizeof (NetBuffer_t)+_size);\
+    if (_buf) {\
+        _buf->size = _size;\
+    }\
+} while (0)
+
+#define NetBufferFree(_buf) \
+do {\
+    if (_buf) free (_buf);\
+} while (0)
 
 #define NetBufferSetID(_buf, _id) do {_buf->id = _id;}while (0)
 #define NetBufferGetIO(_buf)  (_buf->io)
 #define NetBuffetGetID(_buf)  (_buf->id)
 #define NetBufferSetIO(_buf, _io) \
 do {\
+    NetIOLock (_io);\
     _buf->io = _io;\
+    DC_link_add_front (&_io->PRI(buffer_link), &_buf->PRI(io_link));\
+    NetIOUnlock (_io);\
+} while (0)
+
+#define NetBufferRemoveIO(_buf) \
+do {\
+    if (_buf && _buf->io) {\
+        NetIOLock (_buf->io);\
+        DC_link_remove (&_buf->PRI(io_link));\
+        NetIOUnlock (_buf->io);\
+        _buf->io = NULL;\
+    }\
 } while (0)
 
 #define NetBufferSetData(_buf, _off, _data, _size) \
 do {\
     memcpy (_buf->buffer+_off, _data, MIN(_buf->size-_off, _size));\
-    _buf->data_length = MIN (_buf->size-_off, _size)\
+    _buf->data_length = MIN (_buf->size-_off, _size);\
 } while (0)
-#define NetBufferSetString(_buf, _off, _str) NetBufferSetData(_buf, _off, (void*)_str, strlen (_str))
+
 
 typedef struct _NetConfig {
     char *chdir;
@@ -175,7 +192,6 @@ typedef struct _NetConfig {
     char *pidfile;
     int  daemon;
     int  num_sockets;
-    
     int  num_sockbufs;
     unsigned int max_sockbuf_size;
     int num_sock_conns;
@@ -185,7 +201,7 @@ typedef struct _NetConfig {
     unsigned int  watch_dog;
 } NetConfig_t;
 
-#define WATCH_DOG(_delay, _timeout) (((_delay&0xFF)<<16)|(_timeout&0xFF))
+#define WATCH_DOG(_delay, _timeout) (((_delay&0xFF)<<8)|(_timeout&0xFF))
 
 enum {
     NET_STAT_IDLE   = 1,
@@ -194,16 +210,27 @@ enum {
 };
 
 struct _Net;
-typedef struct _NetProcQueue {
-    struct _Net *net;
-    unsigned long long seqno;
-    DC_queue_t    request_queue;
-    DC_queue_t    reply_queue;
-    DC_mutex_t    lock;
-    DC_thread_t   manager_thread;
-    DC_thread_t   reply_thread;
-    DC_thread_pool_manager_t proc_pool;
-} NetProcQueue_t;
+
+typedef struct _NetQueueManager {
+    DC_queue_t  queue;
+    DC_mutex_t  lock;
+    DC_thread_t manager_thread;
+    DC_thread_pool_manager_t task_pool;
+    void (*handler) (struct _NetQueueManager*, qobject_t, void*);
+    void *data;
+}NetQueueManager_t;
+
+
+extern int InitQueueManager (NetQueueManager_t *mgr,
+                             int queue_size,
+                             int num_threads,
+                             void (*handler)(NetQueueManager_t*, qobject_t, void*),
+                             void *data);
+
+extern int RunTaskInQueue (NetQueueManager_t *mgr,
+                           qobject_t task);
+
+extern void DestroyQueueManager (NetQueueManager_t *mgr);
 
 typedef struct _Net {
     NetIO_t  *net_io;
@@ -218,7 +245,9 @@ typedef struct _Net {
     };
 
     NetAddr_t      *net_addr_array;
-    NetProcQueue_t *proc_queue_map;
+    NetQueueManager_t     *proc_queue_map;
+    NetQueueManager_t     reply_queue;
+
     DC_thread_t    conn_checker;
     unsigned int   timer;
     NetConfig_t    *config;
@@ -242,6 +271,8 @@ typedef Net_t NetServer_t;
 
 extern NetIO_t *NetAllocIO (Net_t *net);
 
+extern void NetCloseIO (Net_t *net, NetIO_t *io);
+
 extern void NetFreeIO (Net_t *net, NetIO_t *io);
 
 
@@ -249,8 +280,7 @@ extern NetBuffer_t *NetAllocBuffer (Net_t *srv);
 
 extern void NetFreeBuffer (Net_t *srv, NetBuffer_t *buf);
 
-extern void NetAddIncomingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue);
-extern void NetAddOutgoingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue);
+extern void NetCommitIO (Net_t *net, const NetIO_t *io);
 
 enum {
     RES_IO    = 1,
@@ -269,8 +299,8 @@ typedef struct _NetDelegate {
     void (*didReadData) (Net_t *srv, NetIO_t *from, NetBuffer_t *buf);
     long (*writeSocketData) (Net_t *srv, NetIO_t *to, NetBuffer_t *buf);
 
-    void (*didWriteData) (Net_t *srv, NetBuffer_t *buf, NetProcQueue_t *queue, int ok);
-    int  (*processData) (Net_t *srv, NetBuffer_t *buf, NetProcQueue_t *queue);
+    int (*didWriteData) (Net_t *srv, NetIO_t*, NetBuffer_t *buf,int ok, int errcode);
+    int  (*processData) (Net_t *srv,NetIO_t *io, NetBuffer_t *buf);
     void (*willDisconnectWithRemote) (Net_t *srv, NetIO_t *remote);
     void (*willCloseNet) (Net_t *net);
     int  (*ping) (Net_t *net, NetBuffer_t *buf);

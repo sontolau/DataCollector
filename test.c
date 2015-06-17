@@ -6,6 +6,8 @@
 #include <arpa/inet.h>
 #include "netio.h"
 
+#if 0
+
 #define ROOT_CA "/root/Workspace/DataCollector/certs/root.pem"
 #define SERV_CERT "/root/Workspace/DataCollector/certs/server.pem"
 #define SERV_KEY  "/root/Workspace/DataCollector/certs/server.key"
@@ -98,8 +100,11 @@ static NetDelegate_t clientDelegate = {
     .processBuffer          = client_proc,
 };
 
+#endif
+
 int main (int argc, const char *argv[])
 {
+/*
     NetAddr_t remote;
     int len = 0;
     memset (&net, '\0', sizeof (net));
@@ -108,4 +113,13 @@ int main (int argc, const char *argv[])
     } else {
         return NetRun (&net, &netConfig, &clientDelegate);
     }
+*/
+    NetBuffer_t *buf = NULL;
+    NetBufferAlloc (buf, 10);
+    NetBufferSetData (buf, 0, "hello", strlen ("hello"));
+    printf ("%s\n", buf->buffer);
+
+    NetBufferFree (buf);
+
+    return 0;
 }

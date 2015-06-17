@@ -1,11 +1,15 @@
 #ifndef _DC_ERROR_H
 #define _DC_ERROR_H
 
-//#include "libdc.h"
-
 #ifndef MAX_ERRBUF_LEN
 #define MAX_ERRBUF_LEN 500
 #endif
+
+typedef struct _DC_errbuf {
+    char errbuf[MAX_ERRBUF_LEN+1];
+} DC_errbuf_t;
+
+#define DC_errbuf_set(_ebuf, _estr) strncpy (((DC_errbuf_t*)_ebuf)->errbuf, _estr, strlen (_estr))
 
 #ifdef OS_WINDOWS
 static __WIN_errbuf[MAX_ERRBUF_LEN] = {0};
@@ -16,9 +20,7 @@ static  char *__WIN_fromat_error (int errcode)
 #ifndef ERRNO
 #define ERRNO GetLastError()
 #endif
-#ifndef ERRSTR
-#define ERRSTR  __WIN_format_error(ERRNO)
-#endif
+
 #else
 
 #ifndef ERRNO
@@ -31,18 +33,16 @@ static  char *__WIN_fromat_error (int errcode)
 
 #endif
 
-enum {
-    ERR_OK       = 0,
-    ERR_SYSTEM   = -1,
-    ERR_TIMEDOUT = -2,
-    ERR_NOMEM    = -3,
-    ERR_NOTFOUND = -4,
-};
+#ifndef ERR_OK
+#define ERR_OK   0
+#endif
 
-extern const char *STRERR(int);
+#ifndef ERR_FAILURE
+#define ERR_FAILURE -1
+#endif
 
 typedef struct _DC_error {
-    char *text;
+    DC_errbuf_t  text;
     int  code;
 } DC_error_t;
 
@@ -50,7 +50,10 @@ typedef struct _DC_error {
     do {\
         if (!_err) break;\
         _err->code = _code;\
-        _err->text = (char*)_str;\
+        strncpy (_err->text.errbuf, _str, MAX_ERRBUF_LEN);\
     } while (0)
+
+#define DC_error_code(_err)   (_err->code)
+#define DC_error_text(_err)   (_err->text.errbuf)
 
 #endif

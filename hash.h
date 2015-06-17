@@ -6,7 +6,7 @@
 
 DC_CPP (extern "C" {)
 
-typedef long long DC_key_t;
+typedef unsigned long long DC_key_t;
 
 /*
  * The hash_id_func_t will return an ID for getting 

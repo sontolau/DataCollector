@@ -21,7 +21,7 @@ static int __dict_compare_func (void *obj, DC_key_t key) {
         return 1;
     }
 
-    return 0;
+    return ERR_OK;
 }
 
 static void __dict_destroy_func (void *obj) {
@@ -37,7 +37,7 @@ int DC_dict_init (DC_dict_t *dic, ...) {
     va_list ap;
     char *key;
     void *arg, *obj;
-    int ret = ERR_OK;
+    int ret = 0;
 
     if ((ret = DC_hash_init (dic, 100, __dict_index_func,
                              __dict_compare_func,
@@ -69,7 +69,7 @@ int DC_dict_add_object_with_key (DC_dict_t *dic, const char *key, const void *ob
 
     keyobj = (void**)calloc (2, sizeof (void*));
     if (keyobj == NULL) {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     keyobj[0] = strdup ((char*)key);

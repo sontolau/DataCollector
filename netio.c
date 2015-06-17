@@ -65,212 +65,37 @@ NetIOHandler_t NetProtocolHandler[] = {
     }
 };
 
-DC_INLINE void NetCloseIO (Net_t*net, NetIO_t *io);
+
 int NetIOInit (NetIO_t *io,
                const NetAddr_t *info)
-              // void (*release)(NetIO_t*,void*),
-              // void *data)
 {
     if (info) {
         io->__handler = &NetProtocolHandler[info->net_type];
         __net2addr (info, &io->local_addr);
         io->addr_info = (NetAddr_t*)info;
     }
-/*
 
-    io->refcount   = 1;
-    io->release_cb = release;
-    io->cb_data    = data;
-*/
     DC_mutex_init (&io->io_lock, 0, NULL, NULL);
     DC_link_init2 (io->PRI (conn_link), NULL);
-//    DC_link_init2 (io->PRI (buffer_link), NULL);
+    DC_link_init2 (io->PRI (buffer_link), NULL);
     return 0;
 }
 
-#if 0
-DC_INLINE int PutObjectIntoQueue (Net_t *serv, void *obj, DC_queue_t *queue)
-{
-    int ret;
-    NetLockContext (serv);
-    ret = DC_queue_push (queue, (qobject_t)obj, 1);
-    NetUnlockContext (serv);
-    return ret;
-}
 
-DC_INLINE void *GetObjectFromQueue (Net_t *serv, DC_queue_t *queue)
-{
-    void *obj = NULL;
-    NetLockContext (serv);
-    obj = (void*)DC_queue_pop (queue);
-    NetUnlockContext (serv);
-    return obj;
-}
-
-DC_INLINE int NetIOHasNext (Net_t *serv, DC_queue_t *queue)
-{
-    int ret = 0;
-
-    NetLockContext (serv);
-    ret = DC_queue_is_empty (queue);
-    NetUnlockContext (serv);
-
-    return (!ret);
-}
-
-#define PutBufferIntoRequestQueue(serv, buf)\
-    PutObjectIntoQueue(serv, buf, ((DC_queue_t*)&serv->request_queue))
-
-#define PutIOIntoReplyQueue(serv, io) \
-    PutObjectIntoQueue(serv, (void*)io, ((DC_queue_t*)&serv->reply_queue))
-
-#define GetBufferFromRequestQueue(serv) \
-    (NetBuffer_t*)GetObjectFromQueue(serv, ((DC_queue_t*)&serv->request_queue))
-
-#define GetIOFromReplyQueue(serv) \
-    (NetIO_t*)GetObjectFromQueue(serv, ((DC_queue_t*)&serv->reply_queue))
-
-#define HasMoreBufferToBeProcessed(serv) \
-    NetIOHasNext(serv, ((DC_queue_t*)&serv->request_queue))
-
-#define HasMoreIOToBeSent(serv) \
-    NetIOHasNext(serv, ((DC_queue_t*)&serv->reply_queue))
-
-#endif
-
-static void ProcessRequestCore (DC_task_t *task ,void *data)
-{
-    NetBuffer_t *buf = data;
-    NetProcQueue_t *queue = buf->queue;
-    Net_t *net = queue->net;
-
-    //TODO: add code here to process request from remote.
-    if (net->delegate && net->delegate->processData) {
-        net->delegate->processData (net, buf, queue);
-    }
-/*
-    NetIORelease (buf->io);
-*/
-    NetFreeBuffer (net, buf);
-}
-
-#if 0
-static void NetProcManager (DC_thread_t *thread,
-                            void *data)
-{
-    //Net_t *serv = (Net_t*)data;
-    //int          i = 0;
-/*
-    for (i=0; i<serv->config->num_process_threads && 
-                HasMoreBufferToBeProcessed (serv); i++) {
-        Dlog ("[libdc] INFO: need a task to process request[%d left].\n", serv->request_queue.length);
-        DC_thread_pool_manager_run_task (&serv->core_proc_pool, 
-                                         ProcessRequestCore, 
-                                         NULL, 
-                                         NULL, 
-                                         serv, 
-                                         1);
-    }
-*/
-   
-    Net_t *serv = (Net_t*)data;
-    NetBuffer_t *buf = NULL;
-
-    while ((buf = GetBufferFromRequestQueue (serv))) {
-        Dlog ("[libdc] INFO: There are %d requests to be processed.\n", serv->request_queue.length);
-        buf->private_data = serv;
-        DC_thread_pool_manager_run_task (&serv->core_proc_pool,
-                                         ProcessRequestCore,
-                                         NULL,
-                                         NULL,
-                                         buf,
-                                         1);
-/*
-        //TODO: add code here to process request from remote.
-        if (serv->delegate && serv->delegate->processData) {
-            serv->delegate->processData (serv, buf->io, buf);
-        }
-        NetIORelease (buf->io);
-        NetFreeBuffer (serv, buf);
-*/
-    }
-}
-
-static void NetProcessReply (DC_thread_t *thread, void *data)
-{
-    Net_t *serv = (Net_t*)data;
-    NetBuffer_t *buf = NULL;;
-    NetIO_t     *io  = NULL;
-    DC_link_t   *linkptr = NULL,
-                *nextlink= NULL;
-    DC_link_t   tmplink;
-    int         iostatus = 1;
-
-    // fetch each outgoing IO from queue.
-    while ((io = GetIOFromReplyQueue (serv))) {
-        iostatus = 1;
-        // set buffer link from IO to local.
-        DC_link_assign (&io->PRI (buffer_link), &tmplink);
-        DC_link_init2 (io->PRI (buffer_link), NULL);
-        NetIOUnlock (io);
-
-        // loop link to get all buffers to send.
-        linkptr = tmplink.next;
-        while (linkptr && linkptr != &tmplink) {
-            nextlink = linkptr->next;
-            buf = DC_link_container_of (linkptr, NetBuffer_t, PRI (buffer_link));
-            if (iostatus && (int)NetIOWriteTo (io, buf) <= 0) {
-                iostatus = 0;
-                NetIORelease (io->to);
-            }
-            if (serv->delegate && serv->delegate->didWriteData) {
-                serv->delegate->didWriteData (serv, io, buf, iostatus);
-            }
-            NetBufferRemoveIO (serv, buf);
-            NetFreeBuffer (serv, buf);
-            linkptr = nextlink;
-        } 
-    }
-}
-
-void NetCommitIO (Net_t *srv, NetIO_t *io)
-{
-    // put current io to the queue and wake up to send.
-    NetIOLock (io);
-    PutIOIntoReplyQueue (srv, io);
-    if (DC_thread_get_status (((DC_thread_t*)&srv->reply_thread)) != THREAD_STAT_RUNNING) {
-        DC_thread_run (&srv->reply_thread, NetProcessReply, srv);
-    }
-}
-
-DC_INLINE void ReleaseIO (NetIO_t *io, void *data)
+static void ProcBufferHandler (NetQueueManager_t *mgr,
+                               qobject_t obj,
+                               void *data)
 {
     Net_t *net = (Net_t*)data;
-    
-    NetFreeIO (net, io);
-}
-#endif
+    NetBuffer_t *buf = (NetBuffer_t*)obj;
+    NetIO_t *io = NetBufferGetIO (buf);
 
-DC_INLINE void NetProcCore (DC_thread_t *thread, void *data)
-{
+    NetBufferRemoveIO (buf);
+    if (net->delegate && net->delegate->processData) {
+        net->delegate->processData (net, io, buf);
+    }
 
-    NetProcQueue_t *queue = (NetProcQueue_t*)data;
-    NetBuffer_t    *buf   = NULL;
-       
-    do {
-        DC_mutex_lock (&queue->lock, 0, 1);
-        buf = (NetBuffer_t*)DC_queue_pop (&queue->request_queue);
-        DC_mutex_unlock (&queue->lock);
-        if (buf) {
-            buf->queue = queue;
-            DC_thread_pool_manager_run_task (&queue->proc_pool,
-                                             ProcessRequestCore,
-                                             NULL,
-                                             NULL,
-                                             buf,
-                                             1);
-        }
-    } while (buf);
+    NetFreeBuffer (net, buf);
 }
 
 DC_INLINE long NetIOWrite (Net_t *net, NetIO_t *io, NetBuffer_t *buf)
@@ -282,56 +107,54 @@ DC_INLINE long NetIOWrite (Net_t *net, NetIO_t *io, NetBuffer_t *buf)
     return NetIOWriteTo (io, buf);
 }
 
-DC_INLINE void NetReplyCore (DC_thread_t *thread, void *data)
-{
-    NetProcQueue_t *queue = (NetProcQueue_t*)data;
-    Net_t          *net   = queue->net;
-    NetBuffer_t    *buf   = NULL;
-    int            status = 0;
 
-    do {
-        DC_mutex_lock (&queue->lock, 0, 1);
-        buf = (NetBuffer_t*)DC_queue_pop (&queue->reply_queue);
-        DC_mutex_unlock (&queue->lock);
-        if (buf) {
-            status = NetIOWrite (net, buf->io, buf);
+static void ReplyBufferHandler (NetQueueManager_t *mgr,
+                                qobject_t obj,
+                                void *data)
+{
+    Net_t *net = (Net_t*)data;
+    NetIO_t *io= (NetIO_t*)obj;
+    NetBuffer_t *buf = NULL;
+    long    status = 1;
+
+    while ((buf = NetIOBufferFetch (io))) {
+        if (status > 0) {
+            status = NetIOWrite (net, io, buf);
             if (net->delegate && net->delegate->didWriteData) {
-                net->delegate->didWriteData (net, buf, queue, status?0:1);
+                if (net->delegate->didWriteData (net, io, buf, status>0?1:0, errno)) {
+                    NetBufferSetIO (buf, io);
+                    NetCommitIO (net, io);
+                    break;
+                }
             }
             if (status <= 0) {
-                NetCloseIO (net, buf->io);
+                NetCloseIO (net, io);
+                NetIODestroy (io);
+                if (io->to) {
+                    NetFreeIO (net, io);
+                }
             }
-            NetFreeBuffer (net, buf);
         }
-    } while (buf);
-}
 
-//void NetPutRequestBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
-void NetAddIncomingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
-{
-    DC_mutex_lock (&queue->lock, 0, 1);
-    DC_queue_push (&queue->request_queue, (qobject_t)buf, 1);
-    queue->net = net;
-    if (DC_thread_get_status (((DC_thread_t*)&queue->manager_thread)) != THREAD_STAT_RUNNING) {
-        DC_thread_run (&queue->manager_thread, NetProcCore, queue);
+        NetFreeBuffer (net, buf);
     }
-    DC_mutex_unlock (&queue->lock);
 }
 
-//void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
-void NetAddOutgoingData (Net_t *net, const NetBuffer_t *buf, NetProcQueue_t *queue)
+void NetAddIncomingData (Net_t *net, const NetBuffer_t *buf, NetQueueManager_t *queue)
 {
-    DC_mutex_lock (&queue->lock, 0, 1);
-    DC_queue_push (&queue->reply_queue, (qobject_t)buf, 1);
-    queue->net = net;
-    if (DC_thread_get_status (((DC_thread_t*)&queue->reply_thread)) != THREAD_STAT_RUNNING) {
-        DC_thread_run (&queue->reply_thread, NetReplyCore, queue);
-    }
-    DC_mutex_unlock (&queue->lock);
+    RunTaskInQueue (queue, (qobject_t)buf);
 }
 
-DC_INLINE NetProcQueue_t *GetProcQueueByHashID (Net_t *net,
-                                                NetProcQueue_t *map,
+//void NetPutReplyBuffer (Net_t *net, const NetBuffer_t *buf, NetQueueManager_t *queue)
+//void NetAddOutgoingData (Net_t *net, const NetBuffer_t *buf, NetQueueManager_t *queue)
+
+void NetCommitIO (Net_t *net, const NetIO_t *io)
+{
+    RunTaskInQueue (&net->reply_queue, (qobject_t)io);
+}
+
+DC_INLINE NetQueueManager_t *GetProcQueueByHashID (Net_t *net,
+                                                NetQueueManager_t *map,
                                                 int num,
                                                 NetBuffer_t *buf)
 {
@@ -367,28 +190,24 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     Net_t *srv = (Net_t*)ev_userdata (ev);
     NetIO_t *io = (NetIO_t*)w->data;
     NetBuffer_t *buffer = NULL;
-    NetProcQueue_t *proc_queue = NULL;
+    NetQueueManager_t *proc_queue = NULL;
 
     // allocate a buffer and IO to receive data.
     if (!(buffer = NetAllocBuffer (srv))) {
         //TODO: process exception.
         return;
     } else {
-        buffer->io = io;
-        //buffer->buffer_size = srv->config->max_sockbuf_size;
-        //buffer->data_length = 0;
-        //buffer->buffer_offset = 0;
-        //memset (buffer->buffer, '\0', buffer->buffer_size);
+        NetBufferSetIO (buffer, io);
     }
 
     // read data.
     if ((int)(buffer->data_length = NetIORead (srv, buffer->io, buffer)) <= 0) {
         //TODO:
-        NetCloseIO (srv, io);
-        if (buffer->io->to) {
-            NetFreeIO (srv, buffer->io);
-        }
+        NetBufferRemoveIO (buffer);
         NetFreeBuffer (srv, buffer);
+        NetCloseIO (srv, io);
+        NetIODestroy (io);
+        NetFreeIO (srv, io);
         return;
     } else {
         Dlog ("[libdc] INFO: received %u bytes.\n", buffer->data_length);
@@ -412,10 +231,11 @@ DC_INLINE void NetReadCallBack (struct ev_loop *ev, ev_io *w, int revents)
     }
 }
 
-DC_INLINE void NetCloseIO (Net_t *net, NetIO_t *io)
+void NetCloseIO (Net_t *net, NetIO_t *io)
 {
+    NetIOLock (io);
     if (IOConnected (io)) {
-        Dlog ("[libdc] INFO: disconnect remote peer.\n");
+        Dlog ("[libdc] INFO: disconnect from remote .\n");
         if (net->delegate && net->delegate->willDisconnectWithRemote) {
             net->delegate->willDisconnectWithRemote (net, io);
         }
@@ -425,6 +245,7 @@ DC_INLINE void NetCloseIO (Net_t *net, NetIO_t *io)
     }
 
     NetIOClose (io);
+    NetIOUnlock (io);
 }
 
 DC_INLINE void NetAcceptCallBack (struct ev_loop *ev, 
@@ -447,6 +268,7 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
         
         if (NetIOAcceptRemote (io, newio) < 0) {
             //TODO: process exception.
+            NetIODestroy (newio);
             NetFreeIO (srv, newio);
             NetIOUnlock (io);
             NetCloseIO (srv, io);
@@ -455,6 +277,7 @@ DC_INLINE void NetAcceptCallBack (struct ev_loop *ev,
             if (srv->delegate && srv->delegate->willAcceptRemote) {
                 if (!srv->delegate->willAcceptRemote(srv, io, newio)) {
                     NetCloseIO (srv, newio);
+                    NetIODestroy (newio);
                     NetFreeIO (srv, newio);
                     return;
                 }
@@ -484,10 +307,6 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
     int i;
     NetIO_t *io;
     NetConfig_t *netcfg = serv->config;
-/*
-    struct timeval rwtimeo =  {(int)(netcfg->rw_timeout/1000), 
-                               (netcfg->rw_timeout % 1000)*1000};
-*/
     int            flag = 1;
 
     serv->net_addr_array = (NetAddr_t*)calloc (serv->config->num_sockets, sizeof (NetAddr_t));
@@ -511,12 +330,6 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
         if (NetIOCreate (io) < 0) {
             return -1;
         } else {
-/*
-            if (netcfg->rw_timeout) {
-                NetIOCtrl (io, NET_IO_CTRL_SET_RECV_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-                NetIOCtrl (io, NET_IO_CTRL_SET_SEND_TIMEOUT, &rwtimeo, sizeof (rwtimeo));
-            }
-*/
             NetIOCtrl (io, NET_IO_CTRL_SET_NONBLOCK, NULL, 0);
 
             if (netcfg->max_sockbuf_size) {
@@ -535,7 +348,7 @@ DC_INLINE int CreateSocketIO (Net_t *serv)
                     }
                 }
             } else {
-                if (NetIOConnect (io, NULL, 0) < 0) {
+                if (NetIOConnect (io) < 0) {
                     NetIOClose (io);
                     return -1;
                 } else {
@@ -578,7 +391,6 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
 
         expired_link.next = NULL;
         expired_link.prev = NULL;
-
         NetIOLock (local_io);
         // loop each connected client IO and to check which IO is 
         // the lastest connected IO.
@@ -609,6 +421,7 @@ DC_INLINE void CheckNetIOConn (DC_thread_t *thread, void *data)
             io = DC_link_container_of (linkptr, NetIO_t, PRI (conn_link));
             Dlog ("[libdc] INFO: a client will be disconnected due to timeout of transaction.\n");
             NetCloseIO (net, io);
+            NetIODestroy (io);
             NetFreeIO (net, io);
             linkptr = tmplink;
         }
@@ -622,6 +435,7 @@ DC_INLINE void DestroySocketIO (Net_t *serv)
     for (i=0; i<serv->config->num_sockets &&
                 serv->net_io; i++) {
         NetIOClose (((NetIO_t*)&serv->net_io[i]));
+        NetIODestroy (((NetIO_t*)&serv->net_io[i]));
         ev_io_stop (serv->ev_loop, &serv->net_io[i].ev);
     }
 
@@ -662,52 +476,41 @@ DC_INLINE void SetLog (const char *logpath)
     fclose (log);
 }
 
-DC_INLINE int InitProcQueueMap (NetProcQueue_t *map, 
-                                int num, 
-                                int num_threads, 
-                                unsigned int queue_size)
+DC_INLINE int InitQueueManagers (Net_t *net)
 {
     int i;
 
-    memset (map, '\0', num*sizeof (NetProcQueue_t));
+    net->proc_queue_map = (NetQueueManager_t*)calloc (net->config->num_process_queues,
+                                                      sizeof (NetQueueManager_t));
 
-    for (i=0; i<num; i++) {
-        if (DC_mutex_init (&map[i].lock, 0, NULL, NULL) < 0) {
-            Dlog ("[libdc] ERROR: initialized mutex failed at line:%d.\n", __LINE__);
-            return -1;
-        }
-
-        if (DC_thread_pool_manager_init (&map[i].proc_pool, num_threads, NULL) < 0) {
-            Dlog ("[libdc] ERROR: initialized thread pool manager failed at line:%d.\n", __LINE__);
-            return -1;
-        }
-
-        if (DC_thread_init (&map[i].manager_thread, NULL, NULL) < 0 ||
-            DC_thread_init (&map[i].reply_thread, NULL, NULL) < 0) {
-            Dlog ("[libdc] ERROR: allocate threads failed at line: %d.\n", __LINE__);
-            return -1;
-        }
-
-        DC_queue_init (&map[i].request_queue, queue_size, 0);
-        DC_queue_init (&map[i].reply_queue, queue_size, 0);
+    for (i=0; i<net->config->num_process_queues; i++) {
+        InitQueueManager (&net->proc_queue_map[i], 
+                          net->config->process_queue_size, 
+                          net->config->num_threads_each_queue, 
+                          ProcBufferHandler, 
+                          net);
     }
+
+    InitQueueManager (&net->reply_queue,
+                      net->config->process_queue_size, 
+                      net->config->num_threads_each_queue, 
+                      ReplyBufferHandler, 
+                      net);
+
 
     return 0;
 }
 
-DC_INLINE void DestroyProcQueueMap (NetProcQueue_t *map, int num)
+DC_INLINE void DestroyQueueManagers (Net_t *net)
 {
     int i;
 
-    for (i=0; i<num; i++) {
-        DC_mutex_destroy (&map[i].lock);
-        DC_thread_pool_manager_destroy (&map[i].proc_pool);
-        DC_queue_destroy (&map[i].request_queue);
-        DC_queue_destroy (&map[i].reply_queue);
-        DC_thread_destroy (&map[i].manager_thread);
-        DC_thread_destroy (&map[i].reply_thread);
+    for (i=0; i<net->config->num_process_queues; i++) {
+        DestroyQueueManager (&net->proc_queue_map[i]);
     }
-    free (map);
+
+    DestroyQueueManager (&net->reply_queue);
+    free (net->proc_queue_map);
 }
 
 
@@ -715,8 +518,6 @@ DC_INLINE int InitNet (Net_t *serv)
 {
     NetConfig_t *config     = serv->config;
     NetDelegate_t *delegate = serv->delegate;
-    //char          strtime[100] = {0};
-    //char          logpath[500] = {0};
     pid_t         pid;
 
     Dlog ("[libdc] INFO: STARTING ... ...\n");
@@ -736,8 +537,6 @@ DC_INLINE int InitNet (Net_t *serv)
     if (config->pidfile) WritePID (config->pidfile, getpid ());
 
     if (config->log) {
-        //__NOW ("%Y-%m-%d %T", strtime, sizeof (strtime)-1);
-        //snprintf (logpath, sizeof (logpath)-1, "%s-%s.log", config->progname, strtime);
         SetLog (config->log);
     }
 
@@ -761,12 +560,7 @@ DC_INLINE int InitNet (Net_t *serv)
         return -1;
     }
 
-    if (!((serv->proc_queue_map = (NetProcQueue_t*)calloc (config->num_process_queues, 
-                                                         sizeof (NetProcQueue_t))) &&
-        !InitProcQueueMap (serv->proc_queue_map, 
-                           config->num_process_queues,
-                           config->num_threads_each_queue,
-                           config->process_queue_size))) {
+    if (InitQueueManagers (serv) < 0) {
         Dlog ("[libdc] ERROR: can not initailze process queue map at line: %d.\n", __LINE__);
         return -1;
     }
@@ -788,7 +582,7 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
     NetBuffer_t *buf = NULL;
     int         i = 0;
     NetIO_t     *io = NULL;
-    NetProcQueue_t *queue = NULL;
+ 
     srv->timer++;
     
     for (i=0; i<srv->config->num_sockets; i++) {
@@ -803,15 +597,12 @@ DC_INLINE void TimerCallBack (struct ev_loop *ev, ev_timer *w, int revents)
                 Dlog ("[libdc] WARN: out of memory at line: %d\n", __LINE__);
                 continue;
             } else {
-                buf->io = io;
+                NetBufferSetIO (buf, io);
                 buf->buffer_addr = io->local_addr;
                 if (srv->delegate && srv->delegate->ping) {
                     if (srv->delegate->ping (srv, buf)) {
-                        queue = GetProcQueueByHashID (srv, 
-                                                      srv->proc_queue_map,
-                                                      srv->config->num_process_queues,
-                                                      buf);
-                        NetAddOutgoingData (srv, buf, queue);
+                        NetCommitIO (srv, io);
+
                     }
                 }
                 NetFreeBuffer (srv, buf);
@@ -829,7 +620,7 @@ DC_INLINE void SignalCallBack (struct ev_loop *ev, ev_signal *w, int revents)
     ev_break (ev, EVBREAK_ALL);
 }
 
-#define WATCH_DOG_DELAY(x) ((x & 0xFF00)>>16)
+#define WATCH_DOG_DELAY(x) ((x & 0xFF00)>>8)
 DC_INLINE int RunNet (Net_t *serv)
 {
     ev_timer  timer;
@@ -841,7 +632,7 @@ DC_INLINE int RunNet (Net_t *serv)
     }
 
     timer.data = serv;
-    ev_timer_init (&timer, TimerCallBack, WATCH_DOG_DELAY(serv->config->watch_dog), 1);
+    ev_timer_init (&timer, TimerCallBack, 1, WATCH_DOG_DELAY(serv->config->watch_dog));
     ev_timer_start (serv->ev_loop, &timer);
 
     sig_handler.data = serv;
@@ -867,8 +658,7 @@ DC_INLINE void ReleaseNet (Net_t *serv)
     Dlog ("[libdc] INFO: QUITING ... ...\n");
     NetLockContext (serv);
     ev_loop_destroy (serv->ev_loop);
-    DestroyProcQueueMap (serv->proc_queue_map, 
-                         serv->config->num_process_queues);
+    DestroyQueueManagers (serv);
     DC_buffer_pool_destroy (&serv->net_io_pool);
     DC_buffer_pool_destroy (&serv->net_buffer_pool);
     DC_mutex_destroy (&serv->PRI(serv_lock));

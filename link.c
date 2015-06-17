@@ -27,14 +27,14 @@ void __link_remove (DC_link_t *prev, DC_link_t *link, DC_link_t *next)
     }
 }
 
-void DC_link_add_after (DC_link_t *before, DC_link_t *link)
+void DC_link_add_behind (DC_link_t *node, DC_link_t *link)
 {
-    __link_insert (before, link, before?before->next:NULL);
+    __link_insert (node, link, node?node->next:NULL);
 }
 
-void DC_link_add_before (DC_link_t *after, DC_link_t *link)
+void DC_link_add_front (DC_link_t *node, DC_link_t *link)
 {
-    __link_insert (after?after->prev:NULL, link, after);
+    __link_insert (node?node->prev:NULL, link, node);
 }
 
 void DC_link_remove (DC_link_t *link)

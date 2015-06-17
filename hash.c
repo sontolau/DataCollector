@@ -75,7 +75,7 @@ int DC_hash_init (DC_hash_t *hash,
     memset (hash, '\0', sizeof (DC_hash_t));
     list_map = (DC_list_t**)calloc (size, sizeof (DC_list_t*));
     if (list_map == NULL)  {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     for (i=0; i<size; i++) {
@@ -105,12 +105,12 @@ int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
                          hash->__hash_id);
 
     if (list == NULL) {
-        return ERR_NOTFOUND;
+        return ERR_FAILURE;
     }
 
     if (!(hc = __new_hash_carrier (key, obj)) ||
         DC_list_add_object (list, (void*)hc) < 0) {
-        return -1;
+        return ERR_FAILURE;
     }
     
     hash->num_objects++;

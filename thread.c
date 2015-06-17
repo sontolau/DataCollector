@@ -51,8 +51,8 @@ int DC_thread_init (DC_thread_t *thread,
 #ifdef OS_WINDOWS
 #else
     if (pthread_create (&thread->PRI (thread_handle), NULL, __thread_cb, thread)) {
-        DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
-        ret = ERR_SYSTEM;
+        DC_error_set (error, ERR_FAILURE, ERRSTR);
+        ret = ERR_FAILURE;
         DC_notifier_destroy (&thread->PRI (notif_object));
         return  ret;
     } else {
@@ -130,7 +130,7 @@ static void __thread_task (DC_thread_t *thread, void *data)
 
     DC_mutex_lock (&manager->PRI (pool_mutex), 0, 1);
     //num_wait = manager->PRI (num_wait);
-    DC_queue_push (&manager->PRI (thread_queue), (qobject_t)task->PRI (task_thread), 0);
+    DC_queue_add (&manager->PRI (thread_queue), (qobject_t)task->PRI (task_thread), 0);
     DC_mutex_unlock (&manager->PRI (pool_mutex));
     /*
     while (num_wait && num_wait >= manager->PRI (num_wait)) {
@@ -152,7 +152,7 @@ static void __pool_manager_cb (DC_thread_t *thread, void *data)
 
     do {
         DC_mutex_lock (&pool_manager->PRI (pool_mutex), 0, 1);
-        task = (DC_task_t*)DC_queue_pop (&pool_manager->PRI (task_queue));
+        task = (DC_task_t*)DC_queue_fetch (&pool_manager->PRI (task_queue));
         DC_mutex_unlock (&pool_manager->PRI (pool_mutex));
         if (!task) break;
 
@@ -208,7 +208,7 @@ L3:
     }*/
 
     if (!(pool->PRI (thread_pool) = (DC_thread_t*)calloc (maxthreads, sizeof (DC_thread_t)))) {
-        DC_error_set (error, (ret = ERR_SYSTEM), STRERR(ERR_SYSTEM));
+        DC_error_set (error, (ret = ERR_FAILURE), ERRSTR);
         goto L3;
     }
     
@@ -216,10 +216,10 @@ L3:
         DC_thread_init (&pool->PRI (thread_pool)[i], 
                         __thread_pool_status_cb,
                         error);
-        DC_queue_push (&pool->PRI (thread_queue), (qobject_t)&pool->PRI (thread_pool)[i], 1);
+        DC_queue_add (&pool->PRI (thread_queue), (qobject_t)&pool->PRI (thread_pool)[i], 1);
     }
 
-    return 0;
+    return ERR_OK;
 }
 
 
@@ -254,15 +254,15 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
     DC_task_t   *task    = NULL;
 
     if (!(task = (DC_task_t*)calloc (1, sizeof (DC_task_t)))) {
-        DC_error_set (pool->error, ERR_SYSTEM, STRERR (ERR_SYSTEM));
-        return ERR_SYSTEM;
+        DC_error_set (pool->error, ERR_FAILURE, ERRSTR);
+        return ERR_FAILURE;
     }
    
     
     DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
     ret = __wait_for_idle_thread (pool, wait);
     if (ret == ERR_OK) {
-        thrdptr = (DC_thread_t*)DC_queue_pop (&pool->PRI (thread_queue));
+        thrdptr = (DC_thread_t*)DC_queue_fetch (&pool->PRI (thread_queue));
         Dlog ("[libdc] INFO: there are still %d idle threads.\n", pool->PRI(thread_queue).length);
         task->PUB (task)        = task_core;
         task->PUB (will_process)= will_process;
@@ -272,7 +272,7 @@ int DC_thread_pool_manager_run_task (DC_thread_pool_manager_t *pool,
         task->PRI (task_thread) = thrdptr;
         task->PRI (pool_manager)= pool;
 
-        DC_queue_push (&pool->PRI (task_queue), (qobject_t)task, 0);
+        DC_queue_add (&pool->PRI (task_queue), (qobject_t)task, 0);
         DC_mutex_unlock (&pool->PRI (pool_mutex));
         if (DC_thread_get_status (((DC_thread_t*)&pool->PRI (manager_thread)))
                                                      != THREAD_STAT_RUNNING) {
@@ -303,13 +303,13 @@ void DC_thread_pool_manager_destroy (DC_thread_pool_manager_t *pool)
     int i;
     DC_task_t *task;
 
-    DC_mutex_lock (&pool->PRI (pool_mutex), 0, 1);
+    DC_mutex_lock (&pool->PRI (pool_mutex), 0, 0);
     DC_thread_destroy (&pool->PRI (manager_thread));
     for (i=0; i<pool->max_threads; i++) {
         DC_thread_destroy (&pool->PRI (thread_pool)[i]);
     }
     DC_notifier_destroy (&pool->PRI (task_notifier));
-    while ((task = (DC_task_t*)DC_queue_pop (&pool->PRI (task_queue)))) {
+    while ((task = (DC_task_t*)DC_queue_fetch (&pool->PRI (task_queue)))) {
         free (task);
     }
    DC_queue_destroy (&pool->PRI (task_queue));

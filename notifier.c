@@ -1,5 +1,5 @@
 #include "libdc.h"
-//#include <sys/time.h>
+#include <sys/time.h>
 //#include "notifier.h"
 
 int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *error)
@@ -7,15 +7,14 @@ int DC_notifier_init (DC_notifier_t *notif, DC_mutex_t *obj, DC_error_t *error)
     notif->error = error;
 
     if (pthread_cond_init (&notif->PRI(notif_cond), NULL)) {
-        DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
-        return ERR_SYSTEM;
+        DC_error_set (error, -1, ERRSTR);
+        return ERR_FAILURE;
     }
 
    
-    if (DC_mutex_init (obj, 0, NULL, NULL)) {
+    if (DC_mutex_init (obj, 0, NULL, error)) {
         pthread_cond_destroy (&notif->PRI (notif_cond));
-        DC_error_set (error, ERR_SYSTEM, STRERR(ERR_SYSTEM));
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
     
     notif->PRI (notif_object) = obj;
@@ -29,8 +28,7 @@ int DC_notifier_wait (DC_notifier_t *notif, long time, int lockflag)
     int ret = 0;
 
     if (!lockflag && DC_mutex_lock (notif->PRI(notif_object), 0, 1) < 0) {
-        fprintf (stderr, "The lock has been locked.\n");
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     if (time) {
@@ -56,16 +54,14 @@ int DC_notifier_wait (DC_notifier_t *notif, long time, int lockflag)
     }
 
     if (ret) {
+        DC_error_set (notif->error, ERRNO, ERRSTR);
         if (ret == ETIMEDOUT) {
-            ret = ERR_TIMEDOUT;
+            ret = time;
         } else {
-            ret = ERR_SYSTEM;
+            ret = -1;
         }
-    } else {
-        ret = ERR_OK;
     }
 
-    DC_error_set (notif->error, ret, STRERR(ret));
     return ret;
 }
 

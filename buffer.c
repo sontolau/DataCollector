@@ -13,7 +13,7 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
     pool->unit_size     = size;
     if (!(pool->__bufptr= (DC_buffer_t*)malloc 
                           (num*(size+sizeof(DC_buffer_t))))) {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     ptr = (unsigned char*)pool->__bufptr;
@@ -75,7 +75,6 @@ float    DC_buffer_pool_get_usage (const DC_buffer_pool_t *pool)
 void DC_buffer_pool_destroy (DC_buffer_pool_t *pool)
 {
     if (pool->__bufptr) {
-        //fprintf (stderr, "Buffer Pool Free: %p [******************]\n", pool->__bufptr);
         free (pool->__bufptr);
     }
 }

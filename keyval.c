@@ -122,6 +122,7 @@ static json_object *keyval_to_array (const DC_keyval_t *kv)
             case KV_TYPE_ARRAY: {
                 json_object_array_add (array_obj, keyval_to_array (kvptr->keyval_value));
             } break;
+            case KV_TYPE_FLOAT:
             case KV_TYPE_DOUBLE: {
                 json_object_array_add (array_obj, json_object_new_double (kvptr->double_value));
             } break;
@@ -156,6 +157,7 @@ json_object *keyval_to_json (const DC_keyval_t *kv)
             case KV_TYPE_ARRAY: {
                 json_object_object_add (root, kvptr->key, keyval_to_array (kvptr->keyval_value));
             } break;
+            case KV_TYPE_FLOAT:
             case KV_TYPE_DOUBLE: {
                 json_object_object_add (root, kvptr->key, json_object_new_double (kvptr->double_value));
             } break;
@@ -212,7 +214,7 @@ void DC_keyval_setp (DC_keyval_t *_kv,
     }
 }
 
-DC_keyval_t *DC_keyval_from_json_string (char *jsonstr)
+DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr)
 {
     json_object *root = NULL;
 

@@ -14,7 +14,7 @@ int DC_queue_init (DC_queue_t *queue, unsigned int queue_size, qobject_t zero)
 
     queue->__queue_buffer = (qobject_t*)calloc (queue_size, sizeof (qobject_t));
     if (!queue->__queue_buffer) {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     queue->queue_size       = queue_size;
@@ -44,10 +44,10 @@ int DC_queue_is_full (const DC_queue_t *queue)
 }
 
 
-int DC_queue_push (DC_queue_t *queue, qobject_t obj, int overwrite)
+int DC_queue_add (DC_queue_t *queue, qobject_t obj, int overwrite)
 {
     if (!overwrite && DC_queue_is_full (queue)) {
-        return ERR_NOMEM;
+        return ERR_FAILURE;
     }
 
     *queue->__head_ptr = obj;
@@ -59,7 +59,7 @@ int DC_queue_push (DC_queue_t *queue, qobject_t obj, int overwrite)
     return ERR_OK;
 }
 
-qobject_t DC_queue_pop (DC_queue_t *queue)
+qobject_t DC_queue_fetch (DC_queue_t *queue)
 {
     qobject_t   obj;
 

@@ -56,7 +56,7 @@ do {\
 
 #define DC_keyval_eof(_kvptr)  (_kvptr->type == KV_TYPE_NO)
 
-extern  DC_keyval_t *DC_keyval_from_json_string (char *jsonstr);
+extern  DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr);
 
 extern const char *DC_keyval_to_json_string (const DC_keyval_t*);
 

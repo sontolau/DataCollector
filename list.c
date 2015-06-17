@@ -52,7 +52,7 @@ int  DC_list_init (DC_list_t *list, void (*cb)(void*), ...) {
     va_list ap;
 
     memset (list, '\0', sizeof (DC_list_t));
-    DC_link_add_after (&list->__head, &list->__tail);
+    DC_link_add_behind (&list->__head, &list->__tail);
     list->__destroy_cb = cb;
 
     va_start (ap, cb);
@@ -69,13 +69,13 @@ int DC_list_add_object (DC_list_t *list, void *obj) {
 
     cr = (struct list_carrier*)malloc(sizeof (struct list_carrier));
     if (cr == NULL) {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     list->count++;
     
     cr->obj = obj;
-    DC_link_add_before (&list->__tail, &cr->link);
+    DC_link_add_front (&list->__tail, &cr->link);
     return ERR_OK;
 }
 
@@ -86,7 +86,7 @@ int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int ind
 
     cr = (struct list_carrier*)malloc (sizeof (struct list_carrier));
     if (cr == NULL) {
-        return ERR_SYSTEM;
+        return ERR_FAILURE;
     }
 
     DC_link_foreach (linkptr, ((DC_link_t*)&list->__head)) {
@@ -97,7 +97,7 @@ int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int ind
     }
 
     if (index > 0) {
-        return ERR_NOTFOUND;
+        return ERR_FAILURE;
     }
 
     cr->obj = obj;

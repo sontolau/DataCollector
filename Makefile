@@ -4,7 +4,7 @@ LIBSO=libdc.so
 CC=cc
 CFLAGS=-fPIC -Wall -g
 LIBS=-lev -ljson-c
-OBJS=error.o link.o list.o hash.o dict.o  queue.o buffer.o notifier.o mutex.o thread.o netio.o keyval.o
+OBJS=link.o list.o hash.o dict.o  queue.o buffer.o notifier.o mutex.o thread.o netio.o keyval.o
 INCDIRS=-I./ -I/usr/include/libev -I/usr/include/json-c
 
 all: ${LIB} ${LIBSO}
@@ -26,6 +26,7 @@ install:${LIB}
 	install -m 0664 ./*.h /usr/include/libdc; \
 	install -m 0644 ${LIB} /usr/lib/
 	install -m 0644 ${LIBSO} /usr/lib/
+	ldconfig
 uninstall:
 	if [ -d "/usr/include/libdc" ]; then \
 		rm -rf /usr/include/libdc; \
