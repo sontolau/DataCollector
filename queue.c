@@ -1,10 +1,17 @@
 #include "queue.h"
 
-DC_INLINE int __get_queue_offset (obj_t *curpos, obj_t *startpos, int size)
+DC_INLINE unsigned long long __get_queue_offset (obj_t *curpos, obj_t *startpos, int size)
 {
     unsigned int offset = (unsigned char*)curpos - (unsigned char*)startpos;
 
     return ((int)(offset / sizeof (obj_t)))%size;
+}
+
+DC_INLINE obj_t *__recalc_address (DC_queue_t *queue, obj_t *ptr)
+{
+    return  (queue->PRI (queue_buffer) + __get_queue_offset (++ptr,
+                                                             queue->PRI (queue_buffer),
+                                                             queue->queue_size));
 }
 
 int DC_queue_init (DC_queue_t *queue, unsigned int queue_size)
@@ -49,10 +56,13 @@ int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
     }
 
     *queue->PRI (head_ptr) = obj;
-    queue->PRI (head_ptr)  = (obj_t*)(queue->PRI (queue_buffer) + \
-                         __get_queue_offset (++queue->PRI (head_ptr), \
-                                             queue->PRI (queue_buffer), \
+    queue->PRI (head_ptr)  = __recalc_address (queue, queue->PRI (head_ptr));
+/*
+    queue->PRI (head_ptr)  = (queue->PRI (queue_buffer)+
+                                      __get_queue_offset (++queue->PRI (head_ptr),
+                                             queue->PRI (queue_buffer),
                                              queue->queue_size));
+*/
     queue->length = (++queue->length>queue->queue_size?queue->queue_size:queue->length);
     return ERR_OK;
 }
@@ -67,10 +77,13 @@ obj_t DC_queue_fetch (DC_queue_t *queue)
 
     obj = *queue->PRI (tail_ptr);
     *queue->PRI (tail_ptr) = QZERO;
+    queue->PRI (tail_ptr)  = __recalc_address (queue, queue->PRI (tail_ptr));
+/*
     queue->PRI (tail_ptr)  = (obj_t*)(queue->PRI (queue_buffer) + \
                          __get_queue_offset (++queue->PRI (tail_ptr), \
                                              queue->PRI (queue_buffer), \
                                              queue->queue_size));
+*/
     queue->length--;
     return obj;
 }
