@@ -1,7 +1,7 @@
 TESTAPP=test
 LIB=libdc.a
 LIBSO=libdc.so
-CC=clang
+CC=cc
 CFLAGS=-fPIC -Wall -g
 LIBS=-lev -ljson-c
 OBJS=link.o list.o queue.o locker.o object.o keyval.o hash.o buffer.o thread.o
