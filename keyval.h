@@ -1,6 +1,8 @@
 #ifndef _DC_KEYVAL_H
 #define _DC_KEYVAL_H
 
+#include "libdc.h"
+
 #ifndef MAX_KEY_LEN
 #define MAX_KEY_LEN 255
 #endif

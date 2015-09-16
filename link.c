@@ -1,4 +1,4 @@
-#include "libdc.h"
+#include "link.h"
 
 void __link_insert (DC_link_t *prev, DC_link_t *link, DC_link_t *next)
 {
@@ -48,7 +48,7 @@ void DC_link_assign (const DC_link_t *link,
     DC_link_t *nl = NULL;
     DC_link_t *pl = NULL;
 
-    DC_link_init ((*newlink), ((char*)newlink->class_name));
+    DC_link_init ((*newlink));
     nl = link->next;
     pl = link->prev;
 

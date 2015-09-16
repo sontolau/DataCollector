@@ -1,61 +1,46 @@
-#include "libdc.h"
+#include "list.h"
 
-struct list_carrier {
-    void *obj;
-    DC_link_t  link;
-};
+DC_list_elem_t *__find_elem_at_index (DC_list_t *list, 
+                                      unsigned int index,
+                                      int *flag) {
+    register DC_link_t *linkptr = NULL;
 
-struct list_carrier *__find_carrier_by_obj (DC_list_t *list, void *obj) {
-    register DC_link_t *ptr;
-    struct list_carrier *lc;
-
-    ptr = list->__head.next;
-    while (ptr && ptr != &list->__tail) {
-        lc = DC_link_container_of (ptr, struct list_carrier, link);
-        if (lc->obj == obj) {
-            return lc;
-        }
-
-        ptr = ptr->next;
-    }
-
-    return NULL;
-}
-
-struct list_carrier *__find_carrier_by_idx (DC_list_t *list, 
-                                            unsigned int index) {
-    register DC_link_t *ptr;
-    struct list_carrier *cr;
-    unsigned int loop_times;
-
-    if (index >= list->count) {
+    if (index > list->count - 1) {
         return NULL;
     }
 
-    if (index > (unsigned int)(list->count/2)) {
-        ptr = &list->__tail;
-        loop_times = list->count - index;
-        while (loop_times--) ptr = ptr->prev;
+    if (index < (int)((list->count - 1)/2)) {
+        DC_link_foreach (linkptr,
+                         list->PRI (head_ptr).next,
+                         linkptr && index,
+                         1) index--;
+        if (flag) *flag = 1;
     } else {
-        ptr = &list->__head;
-        loop_times = index + 1;
-        while (loop_times--) ptr = ptr->next;
+        index = (list->count - 1) - index;
+        DC_link_foreach (linkptr,
+                         list->PRI (tail_ptr).prev,
+                         linkptr && index,
+                         0) index--;
+        if (flag) *flag = 0;
     }
 
-    cr = DC_link_container_of (ptr, struct list_carrier, link);
-
-    return cr;
+    return CONTAINER_OF(linkptr, DC_list_elem_t, PRI (link));
 }
 
-int  DC_list_init (DC_list_t *list, void (*cb)(void*), ...) {
+int  DC_list_init (DC_list_t *list, 
+                   void (*destroy_cb) (DC_list_elem_t*, void *), 
+                   void *data, 
+                   ...) {
     void *arg = NULL;
     va_list ap;
 
     memset (list, '\0', sizeof (DC_list_t));
-    DC_link_add_behind (&list->__head, &list->__tail);
-    list->__destroy_cb = cb;
+    list->destroy_cb = destroy_cb;
+    list->data       = data;
 
-    va_start (ap, cb);
+    DC_link_add_behind (&list->PRI (head_ptr), &list->PRI (tail_ptr));
+
+    va_start (ap, data);
     while ((arg = va_arg (ap, void*))) {
         DC_list_add_object (list, arg);
     }
@@ -64,85 +49,61 @@ int  DC_list_init (DC_list_t *list, void (*cb)(void*), ...) {
     return ERR_OK;
 }
 
-int DC_list_add_object (DC_list_t *list, void *obj) {
-    struct list_carrier *cr;
-
-    cr = (struct list_carrier*)malloc(sizeof (struct list_carrier));
-    if (cr == NULL) {
-        return ERR_FAILURE;
-    }
-
+int DC_list_add_object (DC_list_t *list, DC_list_elem_t *obj) {
+    DC_link_add_front (&list->PRI (tail_ptr), &obj->PRI (link));
     list->count++;
-    
-    cr->obj = obj;
-    DC_link_add_front (&list->__tail, &cr->link);
     return ERR_OK;
 }
 
-int DC_list_insert_object_at_index (DC_list_t *list, void *obj, unsigned int index)
+int DC_list_insert_object_at_index (DC_list_t *list, 
+                                    DC_list_elem_t *obj, 
+                                    unsigned int index)
 {
-    struct list_carrier *cr;
-    DC_link_t *linkptr = &list->__head;
+    DC_list_elem_t *listptr = NULL;
 
-    cr = (struct list_carrier*)malloc (sizeof (struct list_carrier));
-    if (cr == NULL) {
-        return ERR_FAILURE;
-    }
+    listptr = __find_elem_at_index (list, index, NULL);
+    if (!listptr) return -1;
 
-    DC_link_foreach (linkptr, ((DC_link_t*)&list->__head)) {
-        if (!index) {
-            break;
-        }
-        index--;
-    }
-
-    if (index > 0) {
-        return ERR_FAILURE;
-    }
-
-    cr->obj = obj;
-    DC_link_add (linkptr, &cr->link);
+    DC_link_add_front (&listptr->PRI (link), &obj->PRI (link));
+    list->count++;
 
     return ERR_OK;
 }
 
-void *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {
-    struct list_carrier *cr;
+DC_list_elem_t *DC_list_get_object_at_index (DC_list_t *list, unsigned int index) {
+    int flag;
+    DC_list_elem_t *obj = NULL;
+    DC_link_t *linkptr = NULL;
 
-    cr = __find_carrier_by_idx (list, index);
-    return cr?cr->obj:NULL;
+    obj = __find_elem_at_index (list, index, &flag);
+    if (obj) linkptr = &obj->PRI (link);
+
+    return linkptr?CONTAINER_OF (linkptr, DC_list_elem_t, PRI (link)):NULL;
 }
 
-void DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
-    struct list_carrier *cr;
-    void                *obj;
+DC_list_elem_t *DC_list_remove_object_at_index (DC_list_t *list, unsigned int index) {
+    
+    DC_list_elem_t *obj = NULL;
 
-    cr = __find_carrier_by_idx (list, index);
-    if (cr) {
-        DC_link_remove (&cr->link);
-        obj = cr->obj;
-        if (list->__destroy_cb) {
-            list->__destroy_cb (obj);
-        }
-        list->count--;
-        free (cr);
+    obj = DC_list_get_object_at_index (list, index);
+    
+    if (obj) {
+        DC_list_remove_object (list, obj);
     }
+
+    return obj;
 }
 
-void DC_list_remove_object (DC_list_t *list, void *obj) {
-    struct list_carrier *cr;
-
-    cr = __find_carrier_by_obj (list, obj);
-    if (cr) {
-        DC_link_remove (&cr->link);
-        list->count--;
-        free (cr);
-    }
+void DC_list_remove_object (DC_list_t *list, DC_list_elem_t *obj) 
+{
+    if (list->destroy_cb) list->destroy_cb (obj, list->data);
+    DC_link_remove (&obj->PRI (link));
+    list->count--;
 }
 
 void DC_list_remove_all_objects (DC_list_t *list)
 {
-    while (list->count) {
+    while (list->count > 0) {
         DC_list_remove_object_at_index (list, 0);
     }
 }
@@ -151,20 +112,20 @@ void DC_list_destroy (DC_list_t *list) {
     DC_list_remove_all_objects (list);
 }
 
-void DC_list_loop (const DC_list_t *list, int (*cb)(void*))
+void DC_list_loop (const DC_list_t *list, int (*cb)(DC_list_elem_t*))
 {
     DC_link_t *head, *tail;
     DC_link_t *curlist;
-    struct list_carrier *cr;
+    DC_list_elem_t *cr;
 
-    head = (DC_link_t*)&list->__head;
-    tail = (DC_link_t*)&list->__tail;
+    head = (DC_link_t*)&list->PRI (head_ptr);
+    tail = (DC_link_t*)&list->PRI (tail_ptr);
     curlist = head->next;
 
     while (curlist != tail) {
-        cr = DC_link_container_of (curlist, struct list_carrier, link);
-        if (cr && cb) {
-            if (!cb (cr->obj)) {
+        cr = CONTAINER_OF (curlist, DC_list_elem_t, PRI (link));
+        if (cb) {
+            if (!cb (cr)) {
                 break;
             }
         }
@@ -172,39 +133,38 @@ void DC_list_loop (const DC_list_t *list, int (*cb)(void*))
     }
 }
 
-void *DC_list_next_object (const DC_list_t *list, void **saveptr) 
+DC_list_elem_t *DC_list_next_object (const DC_list_t *list, void **saveptr) 
 {
     DC_link_t *cur = *saveptr;
-    static DC_link_t *__head,*__tail;
-    struct list_carrier *cr;
+    static DC_link_t *head_ptr,*tail_ptr;
 
     if (cur == NULL) {
-        __head = (DC_link_t*)&list->__head;
-        __tail = (DC_link_t*)&list->__tail;
-        cur = __head->next;
+        head_ptr = (DC_link_t*)&list->PRI (head_ptr);
+        tail_ptr = (DC_link_t*)&list->PRI (tail_ptr);
+        cur = head_ptr->next;
     }
 
-    if (cur == __tail) {
+    if (cur == tail_ptr) {
         *saveptr = NULL;
         cur      = NULL;
     } else {
         *saveptr = cur->next;
     }
 
-    cr = (cur?DC_link_container_of (cur, struct list_carrier, link):NULL);
-    return cr?cr->obj:NULL;
+    return CONTAINER_OF (cur, DC_list_elem_t, PRI (link));
 }
 
-void **DC_list_to_array (const DC_list_t *list, int *num)
+/*
+DC_list_elem_t **DC_list_to_array (const DC_list_t *list, int *num)
 {
-    void **array = NULL;
+    DC_list_elem_t **array = NULL;
     void *saveptr = NULL;
     int  i = 0;
-    void *obj = NULL;
+    DC_list_elem_t *obj = NULL;
 
     *num = 0;
     if (list->count) {
-        array = (void**)calloc (list->count, sizeof (void*));
+        array = (DC_list_elem_t**)calloc (list->count, sizeof (DC_list_elem_t*));
         if (array) {
             while ((obj = DC_list_next_object (list, &saveptr))) {
                 array[i++] = obj;
@@ -215,3 +175,40 @@ void **DC_list_to_array (const DC_list_t *list, int *num)
     *num = i;
     return array;
 }
+*/
+#ifdef LIST_DEBUG
+
+struct Node {
+    DC_list_elem_t list;
+    char name[255];
+};
+
+int main () {
+    struct Node nodes[10];
+    DC_list_elem_t *elem = NULL;
+    struct Node *nodeptr;
+
+    void *saveptr = NULL;
+
+    DC_list_t list;
+    if (DC_list_init (&list, NULL) < 0) {
+        printf ("DC_list_init failed\n");
+        exit (1);
+    }
+
+    for (i=0; i<10; i++) {
+        sprintf (nodes[i].name, "Index %d at %p", i, &nodes[i]);
+        DC_list_add_object (&list, &nodes[i]);
+    }
+
+    while ((elem = DC_list_next_object (&list, &saveptr))) {
+        nodeptr = type_container_of (elem, struct Node, list);
+        printf ("name: %s\n", nodeptr->name);
+    }
+
+    DC_list_destroy (&list);
+    return 0;
+}
+
+
+#endif 

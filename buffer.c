@@ -1,32 +1,33 @@
-#include "libdc.h"
+#include "buffer.h"
 
 int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
 {
     int i = 0;
-    DC_buffer_t *bufptr = NULL;
+    DC_buffer_t *buf_ptr = NULL;
     register unsigned char *ptr = NULL;
 
     memset (pool, '\0', sizeof (DC_buffer_pool_t));
-
-    pool->numbufs       = num;
-    pool->num_allocated = 0;
     pool->unit_size     = size;
-    if (!(pool->__bufptr= (DC_buffer_t*)malloc 
+    
+    if (!(pool->PRI (buf_ptr) = (DC_buffer_t*)malloc 
                           (num*(size+sizeof(DC_buffer_t))))) {
         return ERR_FAILURE;
     }
 
-    ptr = (unsigned char*)pool->__bufptr;
+    if (DC_queue_init (&pool->PRI (buf_queue), num) != ERR_OK) {
+        return ERR_FAILURE;
+    }
+
+    ptr = (unsigned char*)pool->PRI (buf_ptr);
     
     for (i=0; i<num; i++) {
-        bufptr = (DC_buffer_t*)ptr;
+        buf_ptr = (DC_buffer_t*)ptr;
         ptr   += (size + sizeof (DC_buffer_t));
 
-        bufptr->size   = size;
-        bufptr->length = 0;
-        bufptr->busy   = 0;
-        DC_link_add (&pool->__free_link, &bufptr->__link);
-        memset (bufptr->data, '\0', size);
+        buf_ptr->size   = size;
+        buf_ptr->length = 0;
+        memset (buf_ptr->buffer, '\0', size);
+        DC_queue_add (&pool->PRI (buf_queue), (obj_t)buf_ptr, 0);
     }
 
     return ERR_OK;
@@ -35,24 +36,11 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
 DC_buffer_t *DC_buffer_pool_alloc (DC_buffer_pool_t *pool, 
                                    unsigned int size)
 {
-    DC_link_t *linkptr = NULL;
-    DC_buffer_t  *buffer  = NULL;
-
-    if (pool->unit_size < size) {
+    if (pool->unit_size < size || DC_queue_is_empty (&pool->PRI (buf_queue))) {
         return NULL;
     }
 
-    linkptr = pool->__free_link.next;
-    if (linkptr && linkptr != &pool->__free_link) {
-        DC_link_remove (linkptr);
-        DC_link_add (&pool->__engaged_link, linkptr);
-   
-        buffer = DC_link_container_of (linkptr, DC_buffer_t, __link);
-        buffer->busy = 1;
-        pool->num_allocated++;
-    }
-
-    return buffer;
+    return (DC_buffer_t*)DC_queue_fetch (&pool->PRI (buf_queue));
 }
 
 
@@ -60,22 +48,19 @@ void     DC_buffer_pool_free (DC_buffer_pool_t *pool, DC_buffer_t *buf)
 {
     if (buf) {
         buf->length = 0;
-        buf->busy   = 0;
-        DC_link_remove (&buf->__link);
-        DC_link_add    (&pool->__free_link, &buf->__link);
-        pool->num_allocated--;
-    }
-}
+        buf->size   = pool->unit_size;
 
-float    DC_buffer_pool_get_usage (const DC_buffer_pool_t *pool)
-{
-    return pool->num_allocated / pool->numbufs;
+        memset (buf->buffer, '\0', pool->unit_size);
+
+        DC_queue_add (&pool->PRI (buf_queue), (obj_t)buf, 0);
+    }
 }
 
 void DC_buffer_pool_destroy (DC_buffer_pool_t *pool)
 {
-    if (pool->__bufptr) {
-        free (pool->__bufptr);
+    if (pool->PRI (buf_ptr)) {
+        DC_queue_destroy (&pool->PRI (buf_queue));
+        free (pool->PRI (buf_ptr));
     }
 }
 

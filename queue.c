@@ -1,31 +1,29 @@
-//#include "queue.h"
-#include "libdc.h"
+#include "queue.h"
 
-DC_INLINE int __get_queue_offset (qobject_t *curpos, qobject_t *startpos, int size)
+DC_INLINE int __get_queue_offset (obj_t *curpos, obj_t *startpos, int size)
 {
     unsigned int offset = (unsigned char*)curpos - (unsigned char*)startpos;
 
-    return ((int)(offset / sizeof (qobject_t)))%size;
+    return ((int)(offset / sizeof (obj_t)))%size;
 }
 
-int DC_queue_init (DC_queue_t *queue, unsigned int queue_size, qobject_t zero)
+int DC_queue_init (DC_queue_t *queue, unsigned int queue_size)
 {
     int i = 0;
 
-    queue->__queue_buffer = (qobject_t*)calloc (queue_size, sizeof (qobject_t));
+    queue->__queue_buffer = (obj_t*)calloc (queue_size, sizeof (obj_t));
     if (!queue->__queue_buffer) {
         return ERR_FAILURE;
     }
 
     queue->queue_size       = queue_size;
     queue->length           = 0;
-    queue->zero_type        = zero;
 
     for (i=0; i<queue_size; i++) {
-        queue->__queue_buffer[i] = zero;
+        queue->PRI (queue_buffer)[i] = QZERO;
     }
 
-    queue->__tail_ptr = queue->__head_ptr = queue->__queue_buffer;
+    queue->PRI (tail_ptr) = queue->PRI (head_ptr) = queue->PRI (queue_buffer);
     return ERR_OK;
 }
 
@@ -33,53 +31,60 @@ int DC_queue_init (DC_queue_t *queue, unsigned int queue_size, qobject_t zero)
 int DC_queue_is_empty (const DC_queue_t *queue)
 {
     return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr== queue->zero_type;
+           *queue->__head_ptr== QZERO;
 }
 
 
 int DC_queue_is_full (const DC_queue_t *queue)
 {
     return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr != queue->zero_type;
+           *queue->__head_ptr != QZERO;
 }
 
 
-int DC_queue_add (DC_queue_t *queue, qobject_t obj, int overwrite)
+int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
 {
     if (!overwrite && DC_queue_is_full (queue)) {
-        return ERR_FAILURE;
+        return ERR_FULL;
     }
 
-    *queue->__head_ptr = obj;
-    queue->__head_ptr  = (qobject_t*)(queue->__queue_buffer + \
-                         __get_queue_offset (++queue->__head_ptr, \
-                                             queue->__queue_buffer, \
+    *queue->PRI (head_ptr) = obj;
+    queue->PRI (head_ptr)  = (obj_t*)(queue->PRI (queue_buffer) + \
+                         __get_queue_offset (++queue->PRI (head_ptr), \
+                                             queue->PRI (queue_buffer), \
                                              queue->queue_size));
     queue->length = (++queue->length>queue->queue_size?queue->queue_size:queue->length);
     return ERR_OK;
 }
 
-qobject_t DC_queue_fetch (DC_queue_t *queue)
+obj_t DC_queue_fetch (DC_queue_t *queue)
 {
-    qobject_t   obj;
+    obj_t obj;
 
     if (DC_queue_is_empty (queue)) {
-        return queue->zero_type;
+        return QZERO;
     }
 
-    obj = *queue->__tail_ptr;
-    *queue->__tail_ptr = queue->zero_type;
-    queue->__tail_ptr  = (qobject_t*)(queue->__queue_buffer + \
-                         __get_queue_offset (++queue->__tail_ptr, \
-                                             queue->__queue_buffer, \
+    obj = *queue->PRI (tail_ptr);
+    *queue->PRI (tail_ptr) = QZERO;
+    queue->PRI (tail_ptr)  = (obj_t*)(queue->PRI (queue_buffer) + \
+                         __get_queue_offset (++queue->PRI (tail_ptr), \
+                                             queue->PRI (queue_buffer), \
                                              queue->queue_size));
     queue->length--;
     return obj;
 }
 
+void DC_queue_clear (DC_queue_t *queue)
+{    
+    while (DC_queue_fetch (queue));
+}
+
 void DC_queue_destroy (DC_queue_t *queue)
 {
-    if (queue->__queue_buffer) {
-        free (queue->__queue_buffer);
+    DC_queue_clear (queue);
+    
+    if (queue->PRI (queue_buffer)) {
+        free (queue->PRI (queue_buffer));
     }
 }

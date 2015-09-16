@@ -1,5 +1,5 @@
 #include <json.h>
-#include "libdc.h"
+#include "keyval.h"
 
 static DC_keyval_t *keyval_from_json (json_object*);
 static DC_keyval_t *keyval_from_array (json_object *object)

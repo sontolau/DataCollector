@@ -1,10 +1,10 @@
 TESTAPP=test
 LIB=libdc.a
 LIBSO=libdc.so
-CC=cc
+CC=clang
 CFLAGS=-fPIC -Wall -g
 LIBS=-lev -ljson-c
-OBJS=link.o list.o hash.o dict.o  queue.o buffer.o notifier.o mutex.o thread.o netio.o keyval.o
+OBJS=link.o list.o queue.o locker.o object.o keyval.o hash.o buffer.o thread.o
 INCDIRS=-I./ -I/usr/include/libev -I/usr/include/json-c
 
 all: ${LIB} ${LIBSO}
@@ -17,7 +17,7 @@ ${LIBSO}:${OBJS}
 .c.o:
 	${CC} ${CFLAGS} ${INCDIRS} -c $< -o $@ -g ${LIBS}
 clean:
-	rm -f ${LIBSO} ${LIB} ${OBJS} ${TESTAPP}
+	rm -f *~ ${LIBSO} ${LIB} ${OBJS} ${TESTAPP}
 
 install:${LIB}
 	if [ ! -d "/usr/include/libdc" ]; then \

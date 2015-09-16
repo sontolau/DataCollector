@@ -19,10 +19,12 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/socket.h>
+#include <sys/time.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <fcntl.h>
+#include <assert.h>
 #endif
 
 #ifndef SZ_CLASS_NAME
@@ -48,8 +50,13 @@
 
 typedef void* HDC;
 
+typedef long long DC_id_t;
+
 #define type_container_of(_ptr, _type, _name) \
     ((_type*)(((unsigned long)_ptr)-(unsigned long)(&(((_type*)0)->_name))))
+
+#define CONTAINER_OF(_ptr, _type, _name) type_container_of(_ptr, _type, _name)
+#define P(_type, _x)    ((_type*)&_x)
 
 #ifndef __PRIVATE__
 #define __PRIVATE__(x)  __##x
@@ -79,6 +86,8 @@ typedef void* HDC;
 #ifndef Dlog
 #define Dlog(_fmt, ...)  \
 do {\
+    const char *__logenv_##__LINE__=getenv ("DC_LOG");\
+    if (!__logenv_##__LINE__ || __logenv_##__LINE__[0] != '1') break;\
     const char *__szenv_##__LINE__ = getenv ("LOG_SIZE");\
     unsigned int __szlog_##__LINE__ = (__szenv_##__LINE__?strtoul (__szenv_##__LINE__, NULL, 10):10*1024*1024);\
     if (ftell (stdout) >= __szlog_##__LINE__) {\
@@ -92,18 +101,7 @@ do {\
 #endif
 
 #include "error.h"
-#include "link.h"
-#include "dict.h"
-#include "hash.h"
-#include "list.h"
-#include "queue.h"
-#include "keyval.h"
-#include "buffer.h"
-#include "mutex.h"
-#include "thread.h"
-#include "notifier.h"
 
-
-//#include "netio.h"
+#define CLASS_EXTENDS(__class)    __class PRI(super)
 
 #endif

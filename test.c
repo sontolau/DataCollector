@@ -4,7 +4,6 @@
 #include <sys/types.h>
 #include <sys/un.h>
 #include <arpa/inet.h>
-#include "netio.h"
 
 #if 0
 
@@ -102,6 +101,15 @@ static NetDelegate_t clientDelegate = {
 
 #endif
 
+
+#define IF_WHEN(_cond, _e1, _e2) ((_cond)?(_e1):(_e2))
+
+#define CB(_net, _func, n, ...) \
+       IF_WHEN(n, IF_WHEN(_net->delegate && _net->delegate->_func, _net->delegate->_func(_net, __VA_ARGS__),0), IF_WHEN(_net->delegate && _net->delegate->_func, _net->delegate->_func(_net),0))
+void func() {
+
+};
+
 int main (int argc, const char *argv[])
 {
 /*
@@ -113,7 +121,6 @@ int main (int argc, const char *argv[])
     } else {
         return NetRun (&net, &netConfig, &clientDelegate);
     }
-*/
     NetBuffer_t *buf = NULL;
     NetBufferAlloc (buf, 10);
     NetBufferSetData (buf, 0, "hello", strlen ("hello"));
@@ -121,5 +128,8 @@ int main (int argc, const char *argv[])
 
     NetBufferFree (buf);
 
+*/ 
+   // CB(_net, willInitNet, 0);
+    printf ("%d, %d", (int)2.5, (int)2.6);
     return 0;
 }

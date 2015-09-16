@@ -1,56 +1,38 @@
-#include "libdc.h"
+#include "hash.h"
+#include "list.h"
 
-struct hash_carrier {
-    DC_key_t key;
-    void *obj;
-};
 
-static DC_list_t *__list_entry (DC_list_t **map, 
+static DC_list_t *__list_entry (DC_list_t *map, 
                                 unsigned int size,
                                 DC_key_t key, 
-                                hash_id_func_t id_func) {
-    unsigned int id;
+                                hash_id_func_t id_func,
+                                void *data) {
+    unsigned int id = 0;
 
-    if (id_func == NULL) {
-        return NULL;
-    }
+    if (id_func) id = id_func (key, data);
+    else         id = (unsigned int)key;
 
-    id = (unsigned int)(id_func (key)%size);
-    if (map[id] == NULL) {
-        return NULL;
-    }
 
-    return &map[id][id];
+    return &map[id % size];
 }
 
-static struct hash_carrier *__new_hash_carrier (DC_key_t key, void *obj) {
-    struct hash_carrier *hc = NULL;
-
-    hc = (struct hash_carrier*)malloc (sizeof (struct hash_carrier));
-    if (hc) {
-        hc->key = key;
-        hc->obj = obj;
-    }
-    return hc;
-}
-
-static struct hash_carrier *__find_hash_carrier (DC_hash_t *hash, DC_key_t key) {
+DC_hash_elem_t  *__find_hash_elem (DC_hash_t *hash, DC_key_t key) {
     DC_list_t *list;
     void *saveptr = NULL;
-    struct hash_carrier *hc;
+    DC_list_elem_t *objptr = NULL;
+    DC_hash_elem_t *elem = NULL;
 
-    if (hash->__hash_compare == NULL) {
-        return NULL;
-    }
-
-    list = __list_entry ((DC_list_t**)hash->__hash_map,
+    list = __list_entry (hash->PRI (hash_map),
                          hash->size,
                          key,
-                         hash->__hash_id);
+                         hash->PRI (id_cb),
+                         hash->data);
     if (list) {
-        while ((hc = DC_list_next_object (list, &saveptr))) {
-            if (hash->__hash_compare (hc->obj, hc->key)) {
-                return hc;
+        while ((objptr = DC_list_next_object (list, &saveptr))) {
+            elem = CONTAINER_OF (objptr, DC_hash_elem_t, PRI (hash_list));
+
+            if (hash->PRI (compare_cb) (elem, key, hash->data)) {
+                return elem;
             }
         }
     }
@@ -58,132 +40,116 @@ static struct hash_carrier *__find_hash_carrier (DC_hash_t *hash, DC_key_t key) 
     return NULL;
 }
 
-static void __list_cb (void *data)
+static void __list_destroy_cb (DC_list_elem_t *elem,
+                               void *data)
 {
-    free (data);
-}
+    DC_hash_t *hash = (DC_hash_t*)data;
 
+    if (hash->PRI (destroy_cb)) {
+        hash->PRI (destroy_cb) (CONTAINER_OF (elem, DC_hash_elem_t, PRI (array_list)),
+                                hash->data);
+    }
+}
+ 
 int DC_hash_init (DC_hash_t *hash, 
                   int size,
                   hash_id_func_t id_func,
                   hash_compare_func_t comp_func,
-                  hash_destroy_func_t dest_func) {
+                  hash_destroy_func_t dest_func,
+                  void *data) {
 
-    DC_list_t **list_map;
-    int i, j;
+    DC_list_t *list_map;
+    int i;
 
     memset (hash, '\0', sizeof (DC_hash_t));
-    list_map = (DC_list_t**)calloc (size, sizeof (DC_list_t*));
+
+    list_map = (DC_list_t*)calloc (size, sizeof (DC_list_t));
     if (list_map == NULL)  {
         return ERR_FAILURE;
     }
 
     for (i=0; i<size; i++) {
-        list_map[i] = (DC_list_t*)calloc (size, sizeof (DC_list_t));
-        for (j=0; j<size; j++) {
-            DC_list_init (&list_map[i][j], __list_cb, NULL);
-        }
+        DC_list_init (&list_map[i], NULL, NULL, NULL);
     }
 
+    DC_list_init (&hash->PRI (array_nodes), __list_destroy_cb, hash, NULL);
     hash->size = size;
-    hash->num_objects = 0;
-    hash->__hash_map  = (void**)list_map;
-    hash->__hash_id   = id_func;
-    hash->__hash_compare = comp_func;
-    hash->__hash_destroy = dest_func;
+    hash->data = data;
 
+    hash->PRI (hash_map)  = list_map;
+    hash->PRI (id_cb)   = id_func;
+    hash->PRI (compare_cb) = comp_func;
+    hash->PRI (destroy_cb) = dest_func;
+    
     return ERR_OK;
 }
 
-int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, void *obj) {
+int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, DC_hash_elem_t *obj) {
     DC_list_t *list;
-    struct hash_carrier *hc;
 
-    list = __list_entry ((DC_list_t**)hash->__hash_map, 
+    
+    list = __list_entry (hash->PRI (hash_map), 
                          hash->size, 
                          key,
-                         hash->__hash_id);
+                         hash->PRI (id_cb),
+                         hash->data);
 
-    if (list == NULL) {
-        return ERR_FAILURE;
-    }
-
-    if (!(hc = __new_hash_carrier (key, obj)) ||
-        DC_list_add_object (list, (void*)hc) < 0) {
-        return ERR_FAILURE;
-    }
-    
-    hash->num_objects++;
+    DC_list_add_object (list, &obj->PRI (hash_list));
+    DC_list_add_object (&hash->PRI (array_nodes), &obj->PRI (array_list));
 
     return ERR_OK;
 }
 
 
-void *DC_hash_get_object (DC_hash_t *hash, DC_key_t key) {
-    struct hash_carrier *hc;
-
-    hc = __find_hash_carrier (hash, key);
-    return hc?hc->obj:NULL;
+DC_hash_elem_t  *DC_hash_get_object (DC_hash_t *hash, DC_key_t key) {
+    return __find_hash_elem (hash, key);
 }
 
-void **DC_hash_get_all_objects (const DC_hash_t *hash)
+DC_hash_elem_t **DC_hash_get_all_objects (const DC_hash_t *hash)
 {
-    void **objects = NULL;
-    int i, numobj=0;
-    void **listobjs = NULL;
-    int j,total = 0;
+    DC_hash_elem_t **objects = NULL;
+    DC_list_elem_t *elem = NULL;
+    void *saveptr = NULL;
+    int i = 0;
 
-    objects = (void**)calloc (hash->num_objects, sizeof (void*));
-
-    for (i=0; objects && i<hash->size; i++) {
-        listobjs = DC_list_to_array (hash->__hash_map[i], &numobj);
-        if (listobjs && numobj>0) {
-            for (j=0; j<numobj; j++) {
-                objects[total++] = listobjs[j];
-            }
-            free (listobjs);
-            numobj = 0;
-        }
+    objects = (DC_hash_elem_t**)calloc (hash->PRI (array_nodes).count+1, sizeof (DC_hash_elem_t*));
+    while ((elem = DC_list_next_object (&hash->PRI (array_nodes), &saveptr))) {
+        objects[i++] = CONTAINER_OF (elem, DC_hash_elem_t, PRI (array_list));
     }
 
     return objects;
 }
 
 void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key) {
-    struct hash_carrier *hc;
     DC_list_t *list;
+    DC_hash_elem_t *elem = NULL;
 
-    list = __list_entry ((DC_list_t**)hash->__hash_map,
-                          hash->size,
-                          key,
-                          hash->__hash_id);
+    list = __list_entry (hash->PRI (hash_map),             
+                         hash->size,
+                         key,
+                         hash->PRI (id_cb),
+                         hash->data);
+    elem = __find_hash_elem (hash, key);
 
-    if (list && (hc = __find_hash_carrier (hash, key))) {
-        hash->num_objects--;
-        //DC_list_remove_object (list, (void*)hc);
-        if (hash->__hash_destroy) {
-            hash->__hash_destroy (hc->obj);
-        }
-        DC_list_remove_object (list, (void*)hc);
-        hash->num_objects--;
+    if (elem) {
+        DC_list_remove_object (list, &elem->PRI (hash_list));
+        DC_list_remove_object (&hash->PRI (array_nodes), &elem->PRI (array_list));
     }
 }
 
-void DC_hash_destroy (DC_hash_t *hash) {
-    int i, j;
-    DC_list_t **listmap;
-    void *saveptr = NULL;
-    struct hash_carrier *cr;
+void DC_hash_clear (DC_hash_t *hash)
+{
+    int i;
 
-    listmap = (DC_list_t**)hash->__hash_map;
-    for (i=0; listmap && i<hash->size; i++) {
-        for (j=0; j<hash->size; j++) {
-            while (hash->__hash_destroy && (cr = DC_list_next_object (&listmap[i][j], &saveptr))) {
-                hash->__hash_destroy (cr->obj);
-            }
-
-            DC_list_destroy (&listmap[i][j]);
-        }
+    for (i=0; i<hash->size; i++) {
+        DC_list_remove_all_objects (&hash->PRI (hash_map)[i]);
     }
+
+    DC_list_remove_all_objects (&hash->PRI (array_nodes));
+}
+
+void DC_hash_destroy (DC_hash_t *hash) {
+    DC_hash_clear (hash);
+    free (hash->PRI (hash_map));
 }
 
