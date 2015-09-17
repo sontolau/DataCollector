@@ -33,6 +33,7 @@ int DC_object_is_kind_of(DC_object_t *obj, const char *cls) {
 
 void DC_object_destroy (DC_object_t *obj)
 {
+    free (obj);
 }
 
 
@@ -40,9 +41,12 @@ void DC_object_release(DC_object_t *obj) {
 	if (obj) {
 		obj->refcount--;
 		if (obj->refcount <= 0) {
-			obj->__release(obj, obj->data);
+		    if (obj->__release) {
+			    obj->__release(obj, obj->data);
+			} else {
+			    free (obj);
+			}
 		}
-		//free(obj);
 	}
 }
 

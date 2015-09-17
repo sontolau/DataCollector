@@ -19,18 +19,24 @@ typedef struct _NKBuffer {
     unsigned int size;
     unsigned int length;
     NetSockAddr_t sockaddr;
+    void *pointer;
     unsigned char buffer[0];
 } NKBuffer;
 
+enum {
+    NK_EV_RD = 1<<0,
+    NK_EV_WR = 1<<1,
+    NK_EV_ACCEPT = 1<<2,
+};
+
 typedef struct _NKPeer {
     OBJ_EXTENDS (DC_object_t);
-
-    NetIO_t io;
-    NetIO_t *to;
+    NetIO_t *io;
+    struct _NKPeer *to;
     struct ev_io ev_io;
     unsigned long last_counter;
-    DC_list_t peer_list;
-    DC_list_elem_t list_handle;
+    DC_list_t sub_peers;
+    DC_list_elem_t handle;
 } NKPeer;
 
 typedef struct _NKConfig {
@@ -70,14 +76,12 @@ typedef struct _NKDelegate {
 
 typedef struct _NetKit {
     struct ev_loop *ev_core;
-    struct {
-        DC_buffer_pool_t peers;
-        DC_buffer_pool_t buffs;
-        DC_locker_t      lock;
-    } buffer_pool;
-
+    DC_buffer_pool_t peer_pool;
+    DC_buffer_pool_t buffer_pool;
     DC_queue_t  request_queue;
     DC_queue_t  reply_queue;
+    DC_thread_t proc_thread;
+    DC_thread_t reply_thread;
     DC_task_manager_t  task_manager;
     unsigned int counter;
     NKConfig   *config;
@@ -86,4 +90,20 @@ typedef struct _NetKit {
     DC_locker_t  locker;
 } NetKit;
 
+extern int NK_init (NetKit *nk, const NKConfig *config, const NKDelegate *delegate);
+extern void NK_set_userdata (NetKit *nk, const void *data);
+extern void *NK_get_userdata (NetKit *nk);
+extern void NK_set_netio (NetKit *nk, NetIO_t *io, int ev);
+extern int NK_run (NetKit *nk);
+extern void NK_stop (NetKit *nk);
+extern void NK_close_peer (NetKit *nk, NKPeer *peer);
+extern NKBuffer *NK_buffer_alloc (NetKit *kit);
+extern NKBuffer *NK_buffer_get (NKBuffer *buf);
+
+extern void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer);
+extern void NK_buffer_commit (NetKit *kit, NKPeer *peer, NKBuffer *buf);
+extern void NK_buufer_commit_bulk (NetKit *kit, NKPeer *peer, NKBuffer **buf, int num);
+extern void NK_buffer_free (NetKit *kit, NKBuffer *buf);
+
+extern NKPeer *NK_peer_get (NKBuffer *buf);
 #endif
