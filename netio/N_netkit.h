@@ -24,8 +24,8 @@ typedef struct _NKBuffer {
 } NKBuffer;
 
 enum {
-    NK_EV_RD = 1<<0,
-    NK_EV_WR = 1<<1,
+    NK_EV_READ = 1<<0,
+    NK_EV_WRITE = 1<<1,
     NK_EV_ACCEPT = 1<<2,
 };
 
@@ -58,26 +58,23 @@ typedef struct _NKConfig {
 
 struct _NetKit;
 typedef struct _NKDelegate {
-    void (*getAddrInfo) (struct _NetKit*, NetAddrInfo_t *info, int index, int *bind);
     void (*timerExpired) (struct _NetKit*);
     int  (*willInit) (struct _NetKit*);
-    void (*didConnectToHost) (struct _NetKit*, NKPeer *remote);
-    void (*didBindToLocal) (struct _NetKit*, NKPeer *local);
-    void (*didReceiveSignal) (struct _NetKit*, int sig);
     int  (*willAcceptRemote) (struct _NetKit*, NKPeer *local, NKPeer *remote);
     void (*didDisconnectWithRemote) (struct _NetKit*, NKPeer *local, NKPeer *remote);
-    void (*didReceiveData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
-    void (*didFailToReceiveData) (struct _NetKit*, NKPeer *remote);
+    void (*didSuccessToReceiveData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
+    void (*didFailToReceiveData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
     void (*processData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf)
-    void (*didSendData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
+    void (*didSuccessToSendData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
     void (*didFailToSendData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
     void (*willDestroy) (struct _NetKit*);
 } NKDelegate;
 
 typedef struct _NetKit {
-    struct ev_loop *ev_core;
+    struct ev_loop *ev_loop;
     DC_buffer_pool_t peer_pool;
     DC_buffer_pool_t buffer_pool;
+    DC_buffer_pool_t io_pool;
     DC_queue_t  request_queue;
     DC_queue_t  reply_queue;
     DC_thread_t proc_thread;
@@ -101,9 +98,12 @@ extern NKBuffer *NK_buffer_alloc (NetKit *kit);
 extern NKBuffer *NK_buffer_get (NKBuffer *buf);
 
 extern void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer);
-extern void NK_buffer_commit (NetKit *kit, NKPeer *peer, NKBuffer *buf);
-extern void NK_buufer_commit_bulk (NetKit *kit, NKPeer *peer, NKBuffer **buf, int num);
+extern void NK_buffer_commit (NetKit *kit, NKBuffer *buf);
+extern void NK_buufer_commit_bulk (NetKit *kit, NKBuffer **buf, int num);
 extern void NK_buffer_free (NetKit *kit, NKBuffer *buf);
 
-extern NKPeer *NK_peer_get (NKBuffer *buf);
+extern NKPeer *NK_peer_alloc (NetKit *kit);
+extern NKPeer *NK_peer_get (NKPeer *peer);
+extern void NK_peer_free (NetKit *kit, NKPeer *peer);
+
 #endif
