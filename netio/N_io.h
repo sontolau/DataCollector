@@ -1,7 +1,7 @@
 #ifndef _NETIO_IO_H
 #define _NETIO_IO_H
 
-#include <libdc/libdc.h>
+#include "../libdc.h"
 #include <gnutls/gnutls.h>
 
 enum {
@@ -65,8 +65,8 @@ typedef struct _NetIO {
 
 enum {
     NET_IO_CTRL_BIND        =   1,
-    NET_IO_CTRL_LISTEN,
-    NET_IO_CTRL_CONNECT,
+    NET_IO_CTRL_LISTEN      =   2,
+    NET_IO_CTRL_CONNECT     =   3,
     NET_IO_CTRL_ACCEPT,
     NET_IO_CTRL_SET_OPTS,
     NET_IO_CTRL_GET_OPTS,

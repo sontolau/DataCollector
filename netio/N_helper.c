@@ -1,4 +1,4 @@
-#include "N_net.h"
+#include "N_netkit.h"
 
 DC_INLINE void __NK_lock (NetKit *kit)
 {
@@ -41,13 +41,15 @@ DC_INLINE void __NK_release_buffer_cb (DC_object_t *obj, void *data)
 {
     NetKit *nk = (NetKit*)data;
     DC_buffer_t *buf = NULL;
+    NKBuffer    *nbuf = (NKBuffer*)obj;
 
-    if (kit->config->num_sockbufs > 0) {
+    if (nbuf->peer) {
+        DC_object_release ((DC_object_t*)nbuf->peer);
+    }
+
+    if (nk->config->num_sockbufs > 0) {
         buf = DC_buffer_from (obj);
-        if (buf->peer) {
-            DC_object_release ((DC_object_t*)buf->peer);
-        }
-        DC_buffer_pool_free (&kit->buffer_pool, buf);
+        DC_buffer_pool_free (&nk->buffer_pool, DC_buffer_from ((DC_buffer_t*)nbuf));
     } else {
         free (obj);
     }

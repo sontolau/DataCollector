@@ -1,5 +1,5 @@
 LIBNETIO=libnetio.so
-OBJS=N_io.o
+OBJS=N_io.o N_netkit.o
 CC=clang
 FLAGS=-Wall -fPIC
 INCDIRS=

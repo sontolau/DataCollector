@@ -6,6 +6,7 @@
 #include "../thread.h"
 #include "../queue.h"
 #include "../object.h"
+#include "../buffer.h"
 
 #include <ev.h>
 
@@ -24,9 +25,13 @@ typedef struct _NKBuffer {
 } NKBuffer;
 
 enum {
-    NK_EV_READ = 1<<0,
-    NK_EV_WRITE = 1<<1,
-    NK_EV_ACCEPT = 1<<2,
+    NK_EV_TIMER   = 1,
+    NK_EV_INIT    = 2,
+    NK_EV_READ    = 3,
+    NK_EV_WRITE,
+    NK_EV_ACCEPT,
+    NK_EV_PROC,
+    NK_EV_DESTROY,
 };
 
 typedef struct _NKPeer {
@@ -60,13 +65,17 @@ struct _NetKit;
 typedef struct _NKDelegate {
     void (*timerExpired) (struct _NetKit*);
     int  (*willInit) (struct _NetKit*);
+    int  (*didReceiveEvent) (struct _NetKit*, NKPeer*, int ev, void*);
+    void (*processData) (struct _NetKit*, NKBuffer*);
+    /*
     int  (*willAcceptRemote) (struct _NetKit*, NKPeer *local, NKPeer *remote);
     void (*didDisconnectWithRemote) (struct _NetKit*, NKPeer *local, NKPeer *remote);
-    void (*didSuccessToReceiveData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
-    void (*didFailToReceiveData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
-    void (*processData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf)
-    void (*didSuccessToSendData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
-    void (*didFailToSendData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
+    void (*didSuccessToReceiveData) (struct _NetKit*, NKBuffer *buf);
+    void (*didFailToReceiveData) (struct _NetKit*, NKBuffer *buf);
+    void (*processData) (struct _NetKit*, NKPeer *remote, NKBuffer *buf);
+    void (*didSuccessToSendData) (struct _NetKit*, NKBuffer *buf);
+    void (*didFailToSendData) (struct _NetKit*, NKBuffer *buf);
+    */
     void (*willDestroy) (struct _NetKit*);
 } NKDelegate;
 
@@ -85,9 +94,11 @@ typedef struct _NetKit {
     NKDelegate *delegate;
     void        *private_data;
     DC_locker_t  locker;
+    int (*ev_cb) (struct _NetKit*, NKPeer*, int ev, void*);
 } NetKit;
 
 extern int NK_init (NetKit *nk, const NKConfig *config, const NKDelegate *delegate);
+extern void NK_set_event_callback (NetKit *nk, void (*cb)(struct _NetKit*, NKPeer*, int, void*));
 extern void NK_set_userdata (NetKit *nk, const void *data);
 extern void *NK_get_userdata (NetKit *nk);
 extern void NK_set_netio (NetKit *nk, NetIO_t *io, int ev);

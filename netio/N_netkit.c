@@ -13,7 +13,7 @@
 */
 
 #include "N_netkit.h"
-
+#include "N_helper.c"
 
 //
 //int NetIOInit (NetIO_t *io,
@@ -337,17 +337,13 @@ DC_INLINE void __NK_reply_callback (void *data)
 
     do {
         DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
-        buf = DC_queue_fetch (&nk->reply_queue);
+        buf = (NKBuffer*)DC_queue_fetch (&nk->reply_queue);
         DC_locker_unlock (&nk->locker);
-        if (buf == QZERO) {
+        if ((obj_t)buf == QZERO) {
             break;
         } else {
-            if (NetIOWrite (buf->io, buf->buffer, buf->length) < 0) {
-                nk->delegate->didFailToSendData (nk, buf);
-            } else {
-                nk->delegate->didSuccessToSendData (nk, buf);
-            }
-            NK_buffer_free (buf);
+            nk->ev_cb (nk, NULL, NK_EV_WRITE, buf);
+            NK_buffer_free (nk, buf);
         }
     } while (1);
 }
@@ -359,7 +355,7 @@ DC_INLINE void __NK_process_callback (void *data)
     static DC_queue_t *tmp_queue = NULL;
 
     if (!tmp_queue) {
-        tmp_queue = (DC_queue_t)calloc (1, sizeof (DC_queue_t));
+        tmp_queue = (DC_queue_t*)calloc (1, sizeof (DC_queue_t));
         DC_queue_init (tmp_queue, nk->config->queue_size);
     }
 
@@ -374,8 +370,9 @@ DC_INLINE void __NK_process_callback (void *data)
         }
         DC_locker_unlock (&nk->locker);
 
-        while ((buf = DC_queue_fetch (tmp_queue)) != QZERO) {
-            nk->delegate->processData (nk, buf);
+        while ((obj_t)(buf = DC_queue_fetch (tmp_queue)) != QZERO) {
+            //nk->delegate->processData (nk, buf);
+            nk->ev_cb (nk, NULL, NK_EV_PROC, buf);
             NK_buffer_free (nk, buf);
         }
     } while (1);
@@ -391,23 +388,17 @@ DC_INLINE void __NK_rdwr_callback (struct ev_loop *ev, ev_io *w, int revents)
     buffer = __NK_alloc_buffer (nk);
     if (!buffer) {
         //TODO:
-err_return:
-        if (buffer) __NK_release_buffer (nk, buffer);
         DC_locker_unlock (&nk->locker);
         return;
     }
 
-    if (buffer->length = NetIORead (peer->io, buffer->buffer, buffer->size) < 0) {
-        //TODO:
-        nk->delegate->didFailToReceiveData (peer, buffer);
-        goto err_return;
-    } else {
-        nk->delegate->didSuccessToReceiveData (peer, buffer);
-    }
-
     NK_buffer_set_peer (buffer, peer);
-    buffer->sockaddr = peer->io->sock_addr;
-    DC_queue_add (&nk->request_queue, (obj_t)buffer);
+    if (!nk->ev_cb (nk, peer, NK_EV_READ, buffer)) {
+        buffer->sockaddr = peer->io->sock_addr;
+        DC_queue_add (&nk->request_queue, (obj_t)buffer);
+    } else {
+        __NK_release_buffer (nk, buffer);
+    }
     DC_locker_unlock (&nk->locker);
     if (DC_thread_get_status (&nk->proc_thread) != THREAD_STAT_RUNNNG) {
         DC_thread_run (&nk->proc_thread, __NK_process_callback, nk);
@@ -419,23 +410,22 @@ DC_INLINE void __NK_accept_callback (struct ev_loop *ev, ev_io *w, int revents)
     NKPeer *peer = w->data;
     NKPeer *new_peer = NULL;
     NetKit *nk  = ev_userdata (ev);
+    int ret = -1;
 
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     new_peer = __NK_alloc_peer (nk);
+    if (new_peer) {
+        if (nk->ev_cb) {
+            ret = nk->ev_cb (nk, peer, NK_EV_ACCEPT, new_peer);
+            if (!ret) {
+                __NK_accept_new_peer (nk, peer, new_peer);
+            }
+        }
 
-    if (!(new_peer)) {
-        //TODO:
-err_return:
-        if (new_peer) __NK_release_peer (nk, new_peer);
-        DC_locker_lock (&nk->locker);
-        return;
+        if (ret) {
+            __NK_release_peer (nk, new_peer);
+        }
     }
-
-    if (NetIOAccept (peer->io, new_peer->io) < 0) {
-        goto err_return;
-    }
-
-    __NK_accept_new_peer (nk, peer, new_peer);
     DC_locker_unlock (&nk->locker);
 }
 
@@ -443,7 +433,13 @@ DC_INLINE void __NK_timer_callback (struct ev_loop *ev, ev_timer *w, int revents
 {
     NetKit *nk = ev_userdata (ev);
 
+    DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     nk->counter++;
+    if (nk->ev_cb) {
+        nk->ev_cb (nk, NULL, NK_EV_TIMER, NULL);
+    }
+    DC_locker_unlock (&nk->locker);
+
 }
 
 DC_INLINE void __NK_signal_callback (struct ev_loop *ev, ev_signal *w, int revents)
@@ -452,26 +448,18 @@ DC_INLINE void __NK_signal_callback (struct ev_loop *ev, ev_signal *w, int reven
 }
 
 
-int NK_init (NetKit *nk, const NKConfig *cfg, const NKDelegate *delegate)
+int NK_init (NetKit *nk, const NKConfig *cfg)
 {
     memset (nk, '\0', sizeof (NetKit));
 
-    nk->config = config;
-    nk->delegate = delegate;
-
+    nk->config = cfg;
     srandom (time (NULL));
 
-    if (cfg->daemon) {
-        daemon (0, 0);
-    }
-
-    if (cfg->chdir) chdir (cfg->chdir);
-    if (cfg->pidfile) __NK_write_pid (config->pidfile, getpid ());
-    if (cfg->log) __NK_config_log (cfg->log);
-
+    /*
     if (delegate->willInit (nk) < 0) {
         return -1;
     }
+    */
 
     if (DC_thread_init (&nk->proc_thread) != ERR_OK) {
         return -1;
@@ -533,6 +521,14 @@ int NK_run (NetKit *nk)
     DC_list_elem_t *ele = NULL;
     NKPeer         *peer = NULL;
 
+    if (cfg->daemon) {
+        daemon (0, 0);
+    }
+
+    if (cfg->chdir) chdir (cfg->chdir);
+    if (cfg->pidfile) __NK_write_pid (cfg->pidfile, getpid ());
+    if (cfg->log) __NK_config_log (cfg->log);
+
     timer.data = nk;
     ev_timer_init (&timer, __NK_timer_callback, 1, WATCH_DOG_DELAY(nk->config->watch_dog));
     ev_timer_start (nk->ev_loop, &timer);
@@ -552,6 +548,13 @@ void NK_set_userdata (NetKit *nk const void *data)
 {
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     nk->private_data = (void*)data;
+    DC_locker_unlock (&nk->locker);
+}
+
+void NK_set_event_callback (NetKit *nk, void (*cb)(NetKit*, NKPeer*, int, void*))
+{
+    DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
+    nk->ev_cb = cb;
     DC_locker_unlock (&nk->locker);
 }
 
