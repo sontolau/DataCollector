@@ -28,12 +28,9 @@ typedef struct _NKBuffer {
 } NKBuffer;
 
 enum {
-    NK_EV_TIMER   = 1,
-    NK_EV_READ    = 2,
+    NK_EV_READ    = 1,
     NK_EV_WRITE,
     NK_EV_ACCEPT,
-    NK_EV_PROC,
-    NK_EV_SIGNAL,
 };
 
 #define MAX_PEER_NAME 255
