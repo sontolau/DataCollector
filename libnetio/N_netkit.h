@@ -2,11 +2,11 @@
 #define _NETIO_KIT_CORE_H
 
 #include "N_io.h"
-#include "../list.h"
-#include "../thread.h"
-#include "../queue.h"
-#include "../object.h"
-#include "../buffer.h"
+#include <libdc/list.h>
+#include <libdc/thread.h>
+#include <libdc/queue.h>
+#include <libdc/object.h>
+#include <libdc/buffer.h>
 
 #include <ev.h>
 

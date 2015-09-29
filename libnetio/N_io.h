@@ -1,7 +1,7 @@
 #ifndef _NETIO_IO_H
 #define _NETIO_IO_H
 
-#include "../libdc.h"
+#include <libdc/libdc.h>
 #include <gnutls/gnutls.h>
 
 enum {

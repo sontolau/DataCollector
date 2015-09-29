@@ -5,7 +5,6 @@ DC_INLINE void __NK_reply_callback (void *data)
 {
     NetKit *nk = data;
     NKBuffer *buf = NULL;
-    long ret;
 
     do {
         DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
@@ -145,7 +144,6 @@ DC_INLINE void __NK_check_callback (void *data)
     void *saveptr = NULL;
     NKPeer *peer = NULL, *subpeer = NULL;
     DC_list_t   tmplist;
-    int index = 0;
 
     DC_list_init (&tmplist, NULL, NULL, NULL);
     while (1) {
