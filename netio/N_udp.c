@@ -75,10 +75,10 @@ static int __dtls_x509_init (NetIO_t *io, int server)
        dh_parms = __generate_dh_params ();
     }
 
-    io->ssl.x509_cred = __generate_x509_cred (io->sock_addr.addr_info->ssl.ca,
-                                              io->sock_addr.addr_info->ssl.cert,
-                                              io->sock_addr.addr_info->ssl.key,
-                                              io->sock_addr.addr_info->ssl.crl,
+    io->ssl.x509_cred = __generate_x509_cred (io->inet_addr.addr_info->ssl.ca,
+                                              io->inet_addr.addr_info->ssl.cert,
+                                              io->inet_addr.addr_info->ssl.key,
+                                              io->inet_addr.addr_info->ssl.crl,
                                               dh_parms);
     if (io->ssl.x509_cred == NULL) {
         return -1;
@@ -149,13 +149,13 @@ static int __dtls_accept (NetIO_t *io)
                       tmpbuf,
                       sizeof (tmpbuf),
                       MSG_PEEK,
-                      (struct sockaddr*)&io->sock_addr.addr,
-                      &io->sock_addr.addrlen);
+                      (struct sockaddr*)&io->inet_addr.addr,
+                      &io->inet_addr.addrlen);
     if (ret < 0) return -1;
 /*
     ret = gnutls_dtls_cookie_verify (&io->ssl.cookie_key,
-                                     &io->sock_addr.addr,
-                                     io->sock_addr.addrlen,
+                                     &io->inet_addr.addr,
+                                     io->inet_addr.addrlen,
                                      tmpbuf,
                                      ret,
                                      &io->ssl.prestate);
@@ -175,8 +175,7 @@ static int __dtls_accept (NetIO_t *io)
 
 static int udpOpenIO (NetIO_t *io, int serv)
 {
-    NetAddrInfo_t *info = io->sock_addr.addr_info;
-    struct sockaddr *sa = (struct sockaddr*)&io->sock_addr.addr;
+    struct sockaddr *sa = (struct sockaddr*)&io->inet_addr.addr;
     int family = sa->sa_family;
     
     io->fd = socket (family, SOCK_DGRAM, 0);
@@ -184,7 +183,7 @@ static int udpOpenIO (NetIO_t *io, int serv)
         return -1;
     }
 
-    if (info->flag & NET_F_SSL) {
+    if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         if (__dtls_x509_init (io, serv) < 0) {
             close (io->fd);
             return -1;
@@ -197,11 +196,11 @@ static int udpOpenIO (NetIO_t *io, int serv)
 
 static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 {
-    NetSockAddr_t *sa = (NetSockAddr_t*)&io->sock_addr;
+    INetAddress_t *sa = (INetAddress_t*)&io->inet_addr;
     NetAddrInfo_t *addr_info = sa->addr_info;
     NetSockOption_t *option;
     int i;
-
+    NetBuf_t  *buf = (NetBuf_t*)arg;
 
     switch (type) {
         case NET_IO_CTRL_BIND:
@@ -215,8 +214,8 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
         {
             if (addr_info->flag & NET_F_SSL) {
                 if (connect (io->fd,
-                         (struct sockaddr*)&io->sock_addr.addr,
-                         io->sock_addr.addrlen) < 0) {
+                         (struct sockaddr*)&sa->addr,
+                         sa->addrlen) < 0) {
                     return -1;
                 }
 
@@ -265,27 +264,31 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
         }
             break;
         case NET_IO_CTRL_READ: {
+            buf->inet_address.addrlen = sizeof (buf->inet_address.addr);
             if (addr_info->flag & NET_F_SSL) {
                 ;//return SSL_read (io->ssl.ssl, arg, len);
-                return gnutls_record_recv (io->ssl.session, arg, len);
+                return gnutls_record_recv (io->ssl.session, 
+                                           buf->data, 
+                                           buf->size);
             }
             return __recvfrom (io->fd,
-                               arg,
-                               len,
-                               (struct sockaddr*)&io->sock_addr.addr,
-                               &io->sock_addr.addrlen);
+                               buf->data,
+                               buf->size,
+                               (struct sockaddr*)&buf->inet_address.addr,
+                               &buf->inet_address.addrlen);
         }
             break;
         case NET_IO_CTRL_WRITE: {
             if (addr_info->flag & NET_F_SSL) {
-               ; // return SSL_write (io->ssl.ssl, arg, len);
-               return gnutls_record_send (io->ssl.session, arg, len);
+               return gnutls_record_send (io->ssl.session, 
+                                          buf->data, 
+                                          buf->size);
             }
             return __sendto (io->fd,
-                             arg,
-                             len,
-                             (struct sockaddr*)&io->sock_addr.addr,
-                             io->sock_addr.addrlen);
+                             buf->data,
+                             buf->size,
+                             (struct sockaddr*)&buf->inet_address.addr,
+                             buf->inet_address.addrlen);
         }
             break;
     
@@ -298,7 +301,7 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 
 static void udpCloseIO (NetIO_t *io)
 {
-    if (io->sock_addr.addr_info->flag & NET_F_SSL) {
+    if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         __dtls_x509_destroy (io);
     }
 

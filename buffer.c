@@ -8,7 +8,8 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
 
     memset (pool, '\0', sizeof (DC_buffer_pool_t));
     pool->unit_size     = size;
-    
+    pool->num_total     = num;
+    pool->num_left      = num;
     if (!(pool->PRI (buf_ptr) = (DC_buffer_t*)malloc 
                           (num*(size+sizeof(DC_buffer_t))))) {
         return ERR_FAILURE;
@@ -39,7 +40,7 @@ DC_buffer_t *DC_buffer_pool_alloc (DC_buffer_pool_t *pool,
     if (pool->unit_size < size || DC_queue_is_empty (&pool->PRI (buf_queue))) {
         return NULL;
     }
-
+    pool->num_left--;
     return (DC_buffer_t*)DC_queue_fetch (&pool->PRI (buf_queue));
 }
 
@@ -53,6 +54,7 @@ void     DC_buffer_pool_free (DC_buffer_pool_t *pool, DC_buffer_t *buf)
         memset (buf->buffer, '\0', pool->unit_size);
 
         DC_queue_add (&pool->PRI (buf_queue), (obj_t)buf, 0);
+        pool->num_left++;
     }
 }
 

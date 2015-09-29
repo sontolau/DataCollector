@@ -9,28 +9,28 @@ DC_INLINE unsigned long long __get_queue_offset (obj_t *curpos, obj_t *startpos,
 
 DC_INLINE obj_t *__recalc_address (DC_queue_t *queue, obj_t *ptr)
 {
-    return  (queue->PRI (queue_buffer) + __get_queue_offset (++ptr,
-                                                             queue->PRI (queue_buffer),
-                                                             queue->queue_size));
+    return  (queue->PRI (buffer) + __get_queue_offset (++ptr,
+                                                             queue->PRI (buffer),
+                                                             queue->size));
 }
 
-int DC_queue_init (DC_queue_t *queue, unsigned int queue_size)
+int DC_queue_init (DC_queue_t *queue, unsigned int size)
 {
     int i = 0;
 
-    queue->__queue_buffer = (obj_t*)calloc (queue_size, sizeof (obj_t));
-    if (!queue->__queue_buffer) {
+    queue->__buffer = (obj_t*)calloc (size, sizeof (obj_t));
+    if (!queue->__buffer) {
         return ERR_FAILURE;
     }
 
-    queue->queue_size       = queue_size;
+    queue->size       = size;
     queue->length           = 0;
 
-    for (i=0; i<queue_size; i++) {
-        queue->PRI (queue_buffer)[i] = QZERO;
+    for (i=0; i<size; i++) {
+        queue->PRI (buffer)[i] = QZERO;
     }
 
-    queue->PRI (tail_ptr) = queue->PRI (head_ptr) = queue->PRI (queue_buffer);
+    queue->PRI (tail_ptr) = queue->PRI (head_ptr) = queue->PRI (buffer);
     return ERR_OK;
 }
 
@@ -58,12 +58,12 @@ int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
     *queue->PRI (head_ptr) = obj;
     queue->PRI (head_ptr)  = __recalc_address (queue, queue->PRI (head_ptr));
 /*
-    queue->PRI (head_ptr)  = (queue->PRI (queue_buffer)+
+    queue->PRI (head_ptr)  = (queue->PRI (buffer)+
                                       __get_queue_offset (++queue->PRI (head_ptr),
-                                             queue->PRI (queue_buffer),
-                                             queue->queue_size));
+                                             queue->PRI (buffer),
+                                             queue->size));
 */
-    queue->length = (++queue->length>queue->queue_size?queue->queue_size:queue->length);
+    queue->length = (++queue->length>queue->size?queue->size:queue->length);
     return ERR_OK;
 }
 
@@ -79,10 +79,10 @@ obj_t DC_queue_fetch (DC_queue_t *queue)
     *queue->PRI (tail_ptr) = QZERO;
     queue->PRI (tail_ptr)  = __recalc_address (queue, queue->PRI (tail_ptr));
 /*
-    queue->PRI (tail_ptr)  = (obj_t*)(queue->PRI (queue_buffer) + \
+    queue->PRI (tail_ptr)  = (obj_t*)(queue->PRI (buffer) + \
                          __get_queue_offset (++queue->PRI (tail_ptr), \
-                                             queue->PRI (queue_buffer), \
-                                             queue->queue_size));
+                                             queue->PRI (buffer), \
+                                             queue->size));
 */
     queue->length--;
     return obj;
@@ -97,7 +97,7 @@ void DC_queue_destroy (DC_queue_t *queue)
 {
     DC_queue_clear (queue);
     
-    if (queue->PRI (queue_buffer)) {
-        free (queue->PRI (queue_buffer));
+    if (queue->PRI (buffer)) {
+        free (queue->PRI (buffer));
     }
 }

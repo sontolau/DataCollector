@@ -67,17 +67,14 @@ int DC_thread_run (DC_thread_t *thread,
                    void  *data)
 {
     int retcode = ERR_OK;
-
-    if ((retcode = DC_locker_lock (&thread->PRI (notify_obj), LOCK_IN_NORMAL, 1)) != ERR_OK) {
+    if ((retcode = DC_locker_lock (&thread->PRI (notify_obj), LOCK_IN_NORMAL, 0)) != ERR_OK) {
         return retcode;
     }
-
     thread->PRI (thread_callback) = thread_cb;
     thread->PRI (user_data)       = data;
+    DC_locker_unlock (&thread->PRI (notify_obj));
 
     DC_locker_notify (&thread->PRI (notify_obj), 1);
-    DC_locker_unlock (&thread->PRI (notify_obj)); 
-
     return retcode;
 }
 

@@ -12,10 +12,10 @@ static int __x509_init (NetIO_t *io, int server)
        dh_parms = __generate_dh_params ();
     }
 
-    io->ssl.x509_cred = __generate_x509_cred (io->sock_addr.addr_info->ssl.ca,
-                                              io->sock_addr.addr_info->ssl.cert,
-                                              io->sock_addr.addr_info->ssl.key,
-                                              io->sock_addr.addr_info->ssl.crl,
+    io->ssl.x509_cred = __generate_x509_cred (io->inet_addr.addr_info->ssl.ca,
+                                              io->inet_addr.addr_info->ssl.cert,
+                                              io->inet_addr.addr_info->ssl.key,
+                                              io->inet_addr.addr_info->ssl.crl,
                                               dh_parms);
     if (io->ssl.x509_cred == NULL) {
         return -1;
@@ -52,45 +52,47 @@ static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
 {
     int ret;
 
-    gnutls_init (&newio->ssl.session, GNUTLS_SERVER);
-    gnutls_priority_set (newio->ssl.session, io->ssl.priority_cache);
-    gnutls_credentials_set (newio->ssl.session, 
-                            GNUTLS_CRD_CERTIFICATE,
-                            io->ssl.x509_cred);
-
-    if (io->sock_addr.addr_info->ssl.verify_peer) {
-
-    } else {
-        gnutls_certificate_server_set_request (newio->ssl.session,
+    if (io->inet_addr.addr_info->flag & NET_F_SSL) {
+        gnutls_init (&newio->ssl.session, GNUTLS_SERVER);
+        gnutls_priority_set (newio->ssl.session, io->ssl.priority_cache);
+        gnutls_credentials_set (newio->ssl.session, 
+                                GNUTLS_CRD_CERTIFICATE,
+                                io->ssl.x509_cred);
+        if (io->inet_addr.addr_info->ssl.verify_peer) {
+        } else {
+            gnutls_certificate_server_set_request (newio->ssl.session,
                                                GNUTLS_CERT_IGNORE);
+        }
     }
-    
+
     newio->fd = accept (io->fd, 
-                        (struct sockaddr*)&newio->sock_addr.addr,
-                        &newio->sock_addr.addrlen);
+                        (struct sockaddr*)&newio->inet_addr.addr,
+                        &newio->inet_addr.addrlen);
+    newio->inet_addr.addr_info = io->inet_addr.addr_info;
     if (newio->fd < 0) {
 err_quit:
-        gnutls_bye (newio->ssl.session, GNUTLS_SHUT_WR);
-        gnutls_deinit (newio->ssl.session);
+        if (io->inet_addr.addr_info->flag & NET_F_SSL) {
+            gnutls_bye (newio->ssl.session, GNUTLS_SHUT_WR);
+            gnutls_deinit (newio->ssl.session);
+        }
         return -1;
     }
 
-    gnutls_transport_set_int (newio->ssl.session, newio->fd);
-    do { ret = gnutls_handshake (newio->ssl.session);} 
-    while (ret < 0 && gnutls_error_is_fatal(ret) == 0);
-
-    if (ret < 0) {
-        close (newio->fd);
-        goto err_quit;
+    if (io->inet_addr.addr_info->flag & NET_F_SSL) {
+        gnutls_transport_set_int (newio->ssl.session, newio->fd);
+        do { ret = gnutls_handshake (newio->ssl.session);} 
+        while (ret < 0 && gnutls_error_is_fatal(ret) == 0);
+        if (ret < 0) {
+            close (newio->fd);
+            goto err_quit;
+        }
     }
-
     return 0;
 }
 
 static int tcpOpenIO (NetIO_t *io, int serv)
 {
-    NetAddrInfo_t *info = io->sock_addr.addr_info;
-    struct sockaddr *sa = (struct sockaddr*)&io->sock_addr.addr;
+    struct sockaddr *sa = (struct sockaddr*)&io->inet_addr.addr;
     int family = sa->sa_family;
     
     io->fd = socket (family, SOCK_STREAM, 0);
@@ -98,7 +100,7 @@ static int tcpOpenIO (NetIO_t *io, int serv)
         return -1;
     }
 
-    if (info->flag & NET_F_SSL) {
+    if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         if (__x509_init (io, serv) < 0) {
             close (io->fd);
             return -1;
@@ -110,10 +112,11 @@ static int tcpOpenIO (NetIO_t *io, int serv)
 
 static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 {
-    NetSockAddr_t *sa = (NetSockAddr_t*)&io->sock_addr;
+    INetAddress_t *sa = (INetAddress_t*)&io->inet_addr;
     NetAddrInfo_t *addr_info = sa->addr_info;
     NetSockOption_t *option;
-    int             i, ret;
+    NetBuf_t        *buf = (NetBuf_t*)arg;
+    long             i, ret;
 
     switch (type) {
         case NET_IO_CTRL_BIND:
@@ -183,17 +186,26 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
         }
             break;
         case NET_IO_CTRL_READ: {
+            buf->inet_address.addrlen = sizeof (buf->inet_address.addr);
+            getpeername (io->fd, 
+                         (struct sockaddr*)&buf->inet_address.addr, 
+                         &buf->inet_address.addrlen);
             if (addr_info->flag & NET_F_SSL) {
-                return gnutls_record_recv (io->ssl.session, arg, len);
+                return (ret = gnutls_record_recv (io->ssl.session, 
+                                                          buf->data, 
+                                                          buf->size));
             }
-            return __recv (io->fd, arg, len);
+            return (ret = __recv (io->fd, buf->data, buf->size))?ret:-1;
         }
             break;
+
         case NET_IO_CTRL_WRITE: {
             if (addr_info->flag & NET_F_SSL) {
-                return gnutls_record_send (io->ssl.session, arg, len);
+                return (ret = gnutls_record_send (io->ssl.session, 
+                                                          buf->data, 
+                                                          buf->size));
             }
-            return __send (io->fd, arg, len);
+            return (ret = __send (io->fd, buf->data, buf->size))?ret:-1;
         }
             break;
     
@@ -206,7 +218,7 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 
 static void tcpCloseIO (NetIO_t *io)
 {
-    NetAddrInfo_t *addr_info = io->sock_addr.addr_info;
+    NetAddrInfo_t *addr_info = io->inet_addr.addr_info;
 
     if (addr_info->flag & NET_F_SSL) {
         __x509_destroy (io);

@@ -10,6 +10,23 @@ DC_INLINE void __NK_unlock (NetKit *kit)
     DC_locker_unlock (&kit->locker);
 }
 
+DC_INLINE DC_buffer_t * __NK_pool_alloc (NetKit *nk,
+                                         DC_buffer_pool_t *pool,
+                                         unsigned int size,
+                                         double threshold,
+                                         void (*cb) (NetKit*, double))
+{
+    double percent = 0.0;
+
+    if (threshold > 0.0) {
+        percent = 1.00000000 - ((double)pool->num_left / (double)pool->num_total);
+        if (percent >= threshold) {
+            cb (nk, percent);
+        }
+    }
+    return DC_buffer_pool_alloc (pool, size);
+}
+
 DC_INLINE DC_object_t *__NK_alloc_buffer_cb (void *data)
 {
     NetKit *nk = (NetKit*)data;
@@ -17,8 +34,11 @@ DC_INLINE DC_object_t *__NK_alloc_buffer_cb (void *data)
     NKBuffer    *nkbuf = NULL;
 
     if (nk->config->num_sockbufs > 0) {
-        buf = DC_buffer_pool_alloc (&nk->buffer_pool,
-                                    nk->config->max_sockbuf_size);
+        buf = __NK_pool_alloc (nk, 
+                               &nk->buffer_pool,
+                               nk->config->max_sockbuf_size,
+                               nk->config->memory_warn_percent,
+                               nk->delegate?nk->delegate->didReceiveMemoryWarning:NULL);
         if (buf) {
             nkbuf = (NKBuffer*)buf->buffer;
         }
@@ -28,9 +48,10 @@ DC_INLINE DC_object_t *__NK_alloc_buffer_cb (void *data)
 
     if (nkbuf) {
         nkbuf->peer = NULL;
-        nkbuf->size = nk->config->max_sockbuf_size;
-        nkbuf->length = 0;
-        nkbuf->pointer = NULL;
+        nkbuf->skbuf_size = nk->config->max_sockbuf_size;
+        nkbuf->skbuf.data = nkbuf->buffer;
+        nkbuf->skbuf.size = nk->config->max_sockbuf_size;
+        
         memset (nkbuf->buffer, '\0', nk->config->max_sockbuf_size);
     }
 
@@ -45,6 +66,7 @@ DC_INLINE void __NK_release_buffer_cb (DC_object_t *obj, void *data)
 
     if (nbuf->peer) {
         DC_object_release ((DC_object_t*)nbuf->peer);
+        nbuf->peer = NULL;
     }
 
     if (nk->config->num_sockbufs > 0) {
@@ -63,8 +85,11 @@ DC_INLINE DC_object_t *__NK_alloc_peer_cb (void *data)
     DC_buffer_t *iobuf = NULL;
 
     if (nk->config->num_sock_conns > 0) {
-        buf = DC_buffer_pool_alloc (&nk->peer_pool,
-                                    sizeof (NKPeer));
+        buf = __NK_pool_alloc (nk,
+                               &nk->peer_pool,
+                               sizeof (NKPeer),
+                               nk->config->conn_warn_percent,
+                               nk->delegate?nk->delegate->didReceiveConnectionWarning:NULL);
         iobuf  = DC_buffer_pool_alloc (&nk->io_pool,
                                     sizeof (NetIO_t));
         if (buf && iobuf) {
@@ -121,7 +146,7 @@ DC_INLINE void __NK_config_log (const char *logpath)
 
     log = fopen (logpath, "w+");
     if (log == NULL) {
-        Dlog ("[libdc] WARN: can not create %s log file.\n", ERRSTR);
+        Dlog ("[libdc] WARN: can not create log file.\n");
         return;
     }
 
@@ -133,36 +158,43 @@ DC_INLINE void __NK_config_log (const char *logpath)
     fclose (log);
 }
 
-
+DC_INLINE void __NK_rdwr_callback();
 DC_INLINE void __NK_accept_new_peer (NetKit *nk, NKPeer *peer, NKPeer *newpeer)
 {
-    DC_INLINE void __NK_rdwr_callback();
-    nk->delegate->willAcceptRemotePeer (nk, peer, newpeer);
+    if (nk->delegate && nk->delegate->willAcceptRemotePeer) {
+        nk->delegate->willAcceptRemotePeer (nk, peer, newpeer);
+    }
+
     newpeer->to = peer;
     ev_io_init (&newpeer->ev_io, __NK_rdwr_callback, newpeer->io->fd, EV_READ);
-    newpeer->ev_io.ev.data = newpeer;
+    newpeer->ev_io.data = newpeer;
 
     ev_io_start (nk->ev_loop, &newpeer->ev_io);
     DC_list_init (&newpeer->sub_peers, NULL, NULL, NULL);
     DC_list_add_object (&peer->sub_peers, &newpeer->handle);
 }
 
+DC_INLINE void __NK_release_peer ();
 DC_INLINE void __NK_close_peer (NetKit *nk, NKPeer *peer)
 {
-    nk->delegate->willClosePeer (nk, peer);
+    if (nk->delegate && nk->delegate->willClosePeer) {
+        nk->delegate->willClosePeer (nk, peer);
+    }
+
     if (peer->io) {
         NetIODestroy (peer->io);
         if (peer->to) {
-            nk->delegate->willDisconnectWithRemotePeer (nk, peer->to, peer);
             DC_list_remove_object (&peer->to->sub_peers, &peer->handle);
         }
         ev_io_stop (nk->ev_loop, &peer->ev_io);
         DC_list_destroy (&peer->sub_peers);
     }
+    __NK_release_peer (peer);
 }
 
 DC_INLINE NKBuffer *__NK_alloc_buffer (NetKit *nk)
 {
+
     return (NKBuffer*)DC_object_alloc (sizeof (NKBuffer),
                                        "NKBuffer",
                                        nk,
@@ -179,13 +211,13 @@ NKPeer *__NK_alloc_peer (NetKit *nk)
 {
     return (NKPeer*)DC_object_alloc (sizeof (NKPeer),
                                      "NKPeer",
-                                     kit,
+                                     nk,
                                      __NK_alloc_peer_cb,
                                      __NK_release_peer_cb);
 
 }
 
-NKPeer void __NK_release_peer (NKPeer *peer)
+DC_INLINE void __NK_release_peer (NKPeer *peer)
 {
     DC_object_release ((DC_object_t*)peer);
 }

@@ -13,6 +13,8 @@ typedef struct _Buffer {
 
 typedef struct _BufferPool {
     unsigned int unit_size;
+    int          num_total;
+    int          num_left;
     DC_buffer_t*    PRI(buf_ptr);
     DC_queue_t      PRI (buf_queue);
 } DC_buffer_pool_t;

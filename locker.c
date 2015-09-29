@@ -126,6 +126,7 @@ void DC_locker_unlock (DC_locker_t*locker)
     } else {
         pthread_mutex_unlock (PMUTEX(locker->PRI (lock)));
     }
+    //usleep (100);
 #endif
 }
 
