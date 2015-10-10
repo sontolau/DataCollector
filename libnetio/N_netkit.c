@@ -325,7 +325,7 @@ void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer)
         buf->peer = (NKPeer*)DC_object_get ((DC_object_t*)peer);
     } else {
         if (buf->peer) {
-            DC_object_release ((DC_object_t*)buf->peer);
+            DC_OBJECT_RELEASE ((DC_object_t*)buf->peer);
             buf->peer = NULL;
         }
     }
@@ -426,7 +426,8 @@ int NK_commit_bulk_buffers (NetKit *nk, NKBuffer **buf, int num)
     return ret;
 }
 
-void *NK_get_userdata (NetKit *nk) {
+void *NK_get_userdata (NetKit *nk) 
+{
     void *data = NULL;
 
     DC_locker_lock (&nk->locker, LOCK_IN_READ, 1);
@@ -436,16 +437,27 @@ void *NK_get_userdata (NetKit *nk) {
     return data;
 }
 
-int NK_set_netio (NetKit *nk, NetIO_t *io, int ev)
+DC_INLINE int NKPeer_init (DC_object_t *obj, void *data)
+{
+    return 0;
+}
+
+DC_INLINE void NKPeer_release (DC_object_t *obj, void *data)
+{
+    DC_object_release (obj);
+}
+
+int NK_add_netio (NetKit *nk, NetIO_t *io, int ev)
 {
     int ev_bits = 0;
-
+/*
     NKPeer *peer = (NKPeer*)DC_object_alloc (sizeof (NKPeer),
                                     "NKPeer",
                                     NULL,
                                     NULL,
                                     NULL);
-
+*/
+    NKPeer *peer = DC_OBJECT_NEW (NKPeer, NULL);
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     peer->io = io;
     peer->to = NULL;
@@ -481,13 +493,13 @@ void NK_remove_netio (NetKit *nk, NetIO_t *io)
             ev_io_stop (nk->ev_loop, &peer->ev_io);
             DC_list_destroy (&peer->sub_peers);
             DC_list_remove_object (&nk->infaces, &peer->handle);
-            DC_object_release ((DC_object_t*)peer);
+            DC_OBJECT_RELEASE ((DC_object_t*)peer);
             break;
         } else if (!io) {
             ev_io_stop (nk->ev_loop, &peer->ev_io);
             DC_list_destroy (&peer->sub_peers);
             DC_list_remove_object (&nk->infaces, &peer->handle);
-            DC_object_release ((DC_object_t*)peer);
+            DC_OBJECT_RELEASE ((DC_object_t*)peer);
         }
     }
     DC_locker_unlock (&nk->locker);

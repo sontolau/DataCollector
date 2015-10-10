@@ -123,7 +123,7 @@ void main (int argc, char *argv[])
         exit (1);
     }
 
-    NK_set_netio (&nk, &serv_io, NK_EV_READ);
+    NK_add_netio (&nk, &serv_io, NK_EV_READ);
     NK_set_delegate (&nk, &delegate);
     NK_run (&nk);
     NK_destroy (&nk);

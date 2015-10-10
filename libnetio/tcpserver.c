@@ -146,7 +146,7 @@ void main (int argc, char *argv[])
     }
 
 
-    NK_set_netio (&nk, &serv_io, NK_EV_ACCEPT);
+    NK_add_netio (&nk, &serv_io, NK_EV_ACCEPT);
     NK_set_delegate (&nk, &delegate);
     NK_run (&nk);
     NK_destroy (&nk);

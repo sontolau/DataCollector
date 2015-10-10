@@ -13,7 +13,8 @@ static DC_keyval_t *keyval_from_array (json_object *object)
         return NULL;
     }
 
-    DC_keyval_alloc (kvs, length);
+    kvs = calloc (length+1, sizeof (DC_keyval_t));
+    //DC_keyval_alloc (kvs, length);
     if (kvs == NULL) return NULL;
 
     for (i=0; i < length; i++) {
@@ -59,7 +60,8 @@ DC_keyval_t *keyval_from_json (json_object *object)
         return NULL;
     }
 
-    DC_keyval_alloc (kvs, length);
+    kvs = calloc (length+1, sizeof (DC_keyval_t));
+    //DC_keyval_alloc (kvs, length);
     if (kvs == NULL) return NULL;
 
     json_object_object_foreach (object, jkey, jvalue) {
@@ -288,7 +290,8 @@ DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
     if (src == NULL) return NULL;
 
     len = DC_keyval_length (src);
-    DC_keyval_alloc (dst, len);
+    dst = calloc (len + 1, sizeof (DC_keyval_t));
+    //DC_keyval_alloc (dst, len);
     if (dst) {
         for (i=0; i < len; i++) {
             switch (src[i].type) {
@@ -308,7 +311,7 @@ DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
 
     return dst;
 }
-
+/*
 void DC_keyval_free_zone (DC_keyval_t *kv)
 {
     register DC_keyval_t *ptr;
@@ -330,7 +333,6 @@ void DC_keyval_free_zone (DC_keyval_t *kv)
         }
     }
 }
-
 static int __keyval_find_helper (DC_keyval_t *kv, void *data)
 {
     void **passinfo = (void**)data;
@@ -344,13 +346,34 @@ static int __keyval_find_helper (DC_keyval_t *kv, void *data)
 
     return 1;
 }
-
+*/
 DC_keyval_t *DC_keyval_find (const DC_keyval_t *kvset, const char *key)
 {
     DC_keyval_t *ptr = NULL;
-    void *passinfo[] = {(void*)(&ptr), (DC_keyval_t*)key, NULL};
+    //void *passinfo[] = {(void*)(&ptr), (DC_keyval_t*)key, NULL};
+    DC_keyval_foreach (ptr, kvset) {
+        if (!strcmp (ptr->key, key)) {
+            return ptr;
+        }
+    }
 
-    DC_keyval_loop ((DC_keyval_t*)kvset, __keyval_find_helper, (void*)passinfo);
+    //DC_keyval_loop ((DC_keyval_t*)kvset, __keyval_find_helper, (void*)passinfo);
+
+    return ptr;
+}
+
+DC_keyval_t *DC_keyval_find_path (const DC_keyval_t *kvset, const char *path[])
+{
+    DC_keyval_t *ptr = NULL;
+
+    ptr = DC_keyval_find (kvset, path[0]);
+    if (ptr) {
+        if (ptr->type == KV_TYPE_KEYVAL && path[1]) {
+            return DC_keyval_find_path (ptr, &path[1]);
+        } else if (path[1]) {
+            return NULL;
+        }
+    }
 
     return ptr;
 }

@@ -1,6 +1,7 @@
 #ifndef _DC_DICT_T
 #define _DC_DICT_T
 
+#include "libdc.h"
 #include "hash.h"
 #include "error.h"
 

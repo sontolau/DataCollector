@@ -18,7 +18,7 @@ typedef int NKError_t;
 
 struct _NKPeer;
 typedef struct _NKBuffer {
-    OBJ_EXTENDS (DC_object_t);
+    DC_OBJ_EXTENDS (DC_object_t);
     struct _NKPeer *peer;
     int  tag;
     long skbuf_size;
@@ -36,7 +36,7 @@ enum {
 #define MAX_PEER_NAME 255
 
 typedef struct _NKPeer {
-    OBJ_EXTENDS (DC_object_t);
+    DC_OBJ_EXTENDS (DC_object_t);
     NetIO_t *io;
     struct _NKPeer *to;
     struct ev_io ev_io;
@@ -109,7 +109,8 @@ extern int NK_init (NetKit *nk, const NKConfig *config);
 extern void NK_set_delegate (NetKit *nk, NKDelegate *delegate);
 extern void NK_set_userdata (NetKit *nk, const void *data);
 extern void *NK_get_userdata (NetKit *nk);
-extern int  NK_set_netio (NetKit *nk, NetIO_t *io, int ev);
+extern int  NK_add_netio (NetKit *nk, NetIO_t *io, int ev);
+extern void NK_remove_netio (NetKit *nk, NetIO_t *io);
 extern int NK_commit_buffer (NetKit *kit, NKBuffer *buf);
 extern int NK_commit_bulk_buffers (NetKit *kit, NKBuffer **buf, int num);
 extern int NK_run (NetKit *nk);

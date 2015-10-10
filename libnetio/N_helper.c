@@ -65,7 +65,7 @@ DC_INLINE void __NK_release_buffer_cb (DC_object_t *obj, void *data)
     NKBuffer    *nbuf = (NKBuffer*)obj;
 
     if (nbuf->peer) {
-        DC_object_release ((DC_object_t*)nbuf->peer);
+        DC_OBJECT_RELEASE ((DC_object_t*)nbuf->peer);
         nbuf->peer = NULL;
     }
 
@@ -199,12 +199,13 @@ DC_INLINE NKBuffer *__NK_alloc_buffer (NetKit *nk)
                                        "NKBuffer",
                                        nk,
                                        __NK_alloc_buffer_cb,
+                                       NULL,
                                        __NK_release_buffer_cb);
 }
 
 void __NK_release_buffer (NKBuffer *buf)
 {
-    DC_object_release ((DC_object_t*)buf);
+    DC_OBJECT_RELEASE ((DC_object_t*)buf);
 }
 
 NKPeer *__NK_alloc_peer (NetKit *nk)
@@ -213,11 +214,12 @@ NKPeer *__NK_alloc_peer (NetKit *nk)
                                      "NKPeer",
                                      nk,
                                      __NK_alloc_peer_cb,
+                                     NULL,
                                      __NK_release_peer_cb);
 
 }
 
 DC_INLINE void __NK_release_peer (NKPeer *peer)
 {
-    DC_object_release ((DC_object_t*)peer);
+    DC_OBJECT_RELEASE ((DC_object_t*)peer);
 }

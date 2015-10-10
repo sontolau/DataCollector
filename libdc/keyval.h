@@ -46,17 +46,9 @@ extern void DC_keyval_setp (DC_keyval_t *kv,
 #define DC_keyval_set(_kv, _key, _type, _val) \
     DC_keyval_setp(((DC_keyval_t*)&_kv), _key, _type, (unsigned long long)_val)
 
-
-#define DC_keyval_alloc(_ptr, _num) \
-do {\
-    _ptr = (DC_keyval_t*)calloc (_num + 1, sizeof (DC_keyval_t));\
-    DC_keyval_set (_ptr[_num], "", KV_TYPE_NO, 0);\
-} while (0)
-
-
-#define DC_keyval_foreach(_kvptr, _kvarry) for(_kvptr=(DC_keyval_t*)(&_kvarry[0]); _kvarry && _kvptr->type != KV_TYPE_NO; _kvptr++)
-
 #define DC_keyval_eof(_kvptr)  (_kvptr->type == KV_TYPE_NO)
+#define DC_keyval_foreach(_kvptr, _kvarry) for(_kvptr=(DC_keyval_t*)(&_kvarry[0]); _kvarry && !DC_keyval_eof (_kvptr); _kvptr++)
+
 
 extern  DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr);
 
@@ -70,8 +62,11 @@ extern void DC_keyval_copy (DC_keyval_t *dest, const DC_keyval_t *src);
 
 extern DC_keyval_t *DC_keyval_find (const DC_keyval_t*, const char*);
 
+extern DC_keyval_t *DC_keyval_find_path (const DC_keyval_t*, const char *path[]);
+
 extern DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src);
 
+/*
 extern void DC_keyval_free_zone (DC_keyval_t *src);
 
 #define DC_keyval_free(kvs) \
@@ -79,5 +74,5 @@ do{\
     DC_keyval_free_zone (kvs);\
     free (kvs);\
 } while (0)
-
+*/
 #endif

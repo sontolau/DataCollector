@@ -15,6 +15,7 @@ extern DC_object_t *DC_object_alloc (long size,
                                      const char *cls,
                                      void *data,
                                      DC_object_t* (*__alloc) (void*),
+                                     int (*__init) (DC_object_t*, void*),
                                      void (*__release)(DC_object_t*, void*));
 
 extern int DC_object_init (DC_object_t *obj);
@@ -25,15 +26,30 @@ extern int DC_object_get_refcount (DC_object_t *obj);
 
 extern int DC_object_is_kind_of (DC_object_t *obj, const char *cls);
 
-extern void DC_object_destroy (DC_object_t *obj);
+//extern void DC_object_destroy (DC_object_t *obj);
 
 extern void DC_object_release (DC_object_t *);
 
-#define OBJ_EXTENDS(__class)   __class super
+#define DC_OBJ_EXTENDS(__class)   __class super
 
 #define DC_OBJECT_NEW(__class, __data) \
-    (__class*)DC_object_alloc(sizeof(__class), #__class, __data, __class##_alloc, __class##_release)
+    ((__class*)DC_object_alloc(sizeof(__class), #__class, __data, NULL, __class##_init, __class##_release))
 
-#define DC_OBJECT_RELEASE(__object) DC_object_release(__object, NULL)
+#ifdef _OBJ
+#undef _OBJ
+#endif
+
+#define _OBJ(x) ((DC_object_t*)x)
+
+#define DC_OBJECT_RELEASE(__obj) \
+do { \
+    if (__obj) { \
+        _OBJ(__obj)->refcount--; \
+        if (_OBJ(__obj)->refcount <= 0) { \
+            _OBJ(__obj)->__release (_OBJ(__obj), _OBJ(__obj)->data); \
+        } \
+    } \
+} while (0)
+
 
 #endif

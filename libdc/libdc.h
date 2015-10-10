@@ -12,6 +12,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <stdarg.h>
+#include <ctype.h>
 
 #ifdef OS_WINDOWS
 #else
@@ -44,8 +45,10 @@
 
 #if __STDC_VERSION__ >= 199901L || __GNUC__ >= 3
 #define DC_INLINE static inline
+#define FASTCALL inline
 #else
 #define DC_INLINE static
+#define FASTCALL 
 #endif
 
 typedef void* HDC;
