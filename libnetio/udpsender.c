@@ -21,7 +21,7 @@ int main (int argc, char *argv[]) {
 
     while (1) {
         char *str = "How are you";
-        NetBufSetData (nbuf, (unsigned char*)str, strlen (str));
+        NetBufSetBuffer (nbuf, (unsigned char*)str, strlen (str));
         NetBufSetInetAddress(nbuf, io.inet_addr);
         NetIOWrite (&io, &nbuf);
         nbuf.data = buf;

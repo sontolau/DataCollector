@@ -30,8 +30,8 @@ void timer_func (NetKit *nk)
 void recv_ok_func (NetKit *nk, NKPeer *peer, NKBuffer *buf)
 {
     recv_counter++;
-    buf->buffer[NK_buffer_get_length(buf)] = '\0';
-    printf ("Received: %s (%d)\n", (char*)NK_buffer_get_data (buf), NK_buffer_get_length(buf));
+    //buf->buffer[NK_buffer_get_length(buf)] = '\0';
+    //printf ("Received: %s (%d)\n", (char*)NK_buffer_get_data (buf), NK_buffer_get_length(buf));
 }
 
 void recv_error_func (NetKit *nk, NKPeer *peer)
@@ -74,7 +74,7 @@ void proc_func (NetKit *nk, NKPeer *peer, NKBuffer *buf)
 {
     char *str = "Replying ....\n";
     proc_counter++;
-    NK_buffer_set_data (buf, (unsigned char*)str, strlen (str));
+    //NK_buffer_set_data (buf, (unsigned char*)str, strlen (str));
     NK_commit_buffer (nk, NK_buffer_get (buf));
 }
 

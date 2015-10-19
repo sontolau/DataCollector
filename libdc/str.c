@@ -27,8 +27,7 @@ const char *DC_strtok (char **str, const char *delim)
 
     while (tail && *tail) {
         if (*tail == delim[0] && !strncmp (tail, delim,  len)) {
-            *tail = '\0';
-            *(tail + 1) = '\0';
+            memset (tail, '\0', len);
             *str = tail + len;
             break;
         }

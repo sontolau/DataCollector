@@ -48,10 +48,9 @@ DC_INLINE DC_object_t *__NK_alloc_buffer_cb (void *data)
 
     if (nkbuf) {
         nkbuf->peer = NULL;
-        nkbuf->skbuf_size = nk->config->max_sockbuf_size;
-        nkbuf->skbuf.data = nkbuf->buffer;
-        nkbuf->skbuf.size = nk->config->max_sockbuf_size;
-        
+        nkbuf->size = nk->config->max_sockbuf_size;
+        nkbuf->length = 0;
+        NetBufSetBuffer (nkbuf->skbuf, nkbuf->buffer, nkbuf->size);
         memset (nkbuf->buffer, '\0', nk->config->max_sockbuf_size);
     }
 

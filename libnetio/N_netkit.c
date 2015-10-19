@@ -13,9 +13,20 @@ DC_INLINE void __NK_reply_callback (void *data)
         if ((obj_t)buf == QZERO) {
             break;
         } else {
+            NetBufSetBuffer (buf->skbuf, buf->buffer, buf->length);
             buf->length = NetIOWrite (buf->peer->io, &buf->skbuf);
-            buf->peer->last_counter = nk->counter;
-            DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
+            if (buf->length < 0) {
+                if (nk->delegate && nk->delegate->didFailToSendData) {
+                    nk->delegate->didFailToSendData (nk, buf->peer, buf);
+                }
+            } else {
+                if (nk->delegate && nk->delegate->didSuccessToSendData) {
+                    nk->delegate->didSuccessToSendData (nk, buf->peer, buf);
+                }
+            }
+
+            NK_free_buffer (nk, buf);
+/*
             if (buf->length != buf->skbuf.size) {
                 if (nk->delegate && nk->delegate->didFailToSendData) {
                     nk->delegate->didFailToSendData (nk, buf->peer, buf);
@@ -28,6 +39,7 @@ DC_INLINE void __NK_reply_callback (void *data)
             }
             __NK_release_buffer (buf);
             DC_locker_unlock (&nk->locker);
+*/
         }
     } while (1);
 }
@@ -51,6 +63,7 @@ DC_INLINE void __NK_process_callback (void *data)
     } while (1);
 }
 
+/*
 DC_INLINE int __NK_push_buffer (NetKit *nk, 
                                 NKBuffer *buf,
                                 DC_queue_t *queue, 
@@ -68,13 +81,12 @@ DC_INLINE int __NK_push_buffer (NetKit *nk,
 
     return DC_queue_add (queue, (obj_t)buf, 0);
 }
-
+*/
 DC_INLINE void __NK_rdwr_callback (struct ev_loop *ev, ev_io *w, int revents)
 {
     NKPeer *peer = w->data;
     NetKit *nk  = ev_userdata (ev);
     NKBuffer *buffer = NULL;
-    long ret;
 
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     buffer = __NK_alloc_buffer (nk);
@@ -85,19 +97,29 @@ DC_INLINE void __NK_rdwr_callback (struct ev_loop *ev, ev_io *w, int revents)
     }
 
     NK_buffer_set_peer (buffer, peer);
+    NetBufSetBuffer (buffer->skbuf, buffer->buffer, buffer->size);
     buffer->length = NetIORead (peer->io, &buffer->skbuf);
     peer->last_counter = nk->counter;
+    if (buffer->length < 0 ||
+        DC_queue_add (&nk->request_queue, (obj_t)buffer, 0) < 0) {
+        __NK_release_buffer (buffer);
+        __NK_close_peer (nk, peer);
+        DC_locker_unlock (&nk->locker);
+        return;
+    }
+
     if (peer->to) {
         DC_list_remove_object (&peer->to->sub_peers, &peer->handle);
         DC_list_insert_object_at_index (&peer->to->sub_peers, &peer->handle, 0);
     }
-
+/*
     if (buffer->length >= 0) {
         ret = __NK_push_buffer (nk, 
                                 buffer, 
                                 &nk->request_queue, 
                                 nk->config->request_busy_percent, 
                                 nk->delegate?nk->delegate->didReceiveRequestBusyWarning:NULL);
+        
         if (ret != ERR_OK) {
             NK_free_buffer (nk, buffer);
         } else {
@@ -113,6 +135,8 @@ DC_INLINE void __NK_rdwr_callback (struct ev_loop *ev, ev_io *w, int revents)
         __NK_release_buffer (buffer);
         __NK_close_peer (nk, peer);
     }
+*/
+   
     DC_locker_unlock (&nk->locker);
     DC_thread_run (&nk->proc_thread, __NK_process_callback, nk);
 }
@@ -381,6 +405,13 @@ void NK_free_buffer (NetKit *nk, NKBuffer *buf)
     DC_locker_unlock (&nk->locker);
 }
 
+void NK_free_peer (NetKit *nk, NKPeer *peer)
+{
+    DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
+    __NK_release_peer (peer);
+    DC_locker_unlock (&nk->locker);
+}
+
 void NK_close_peer (NetKit *nk, NKPeer *peer)
 {
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
@@ -394,11 +425,10 @@ int NK_commit_buffer (NetKit *nk, NKBuffer *buf)
     int ret = ERR_OK;
 
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
-    ret = __NK_push_buffer (nk, 
-                            buf, 
-                            &nk->reply_queue, 
-                            nk->config->reply_busy_percent, 
-                            nk->delegate?nk->delegate->didReceiveReplyBusyWarning:NULL);
+    if (!(ret = DC_queue_add (&nk->reply_queue, (obj_t)buf, 0))) {
+        NK_buffer_get (buf);
+    }
+   
     DC_locker_unlock (&nk->locker);
 
     DC_thread_run (&nk->reply_thread, __NK_reply_callback, nk);
@@ -412,12 +442,9 @@ int NK_commit_bulk_buffers (NetKit *nk, NKBuffer **buf, int num)
 
     DC_locker_lock (&nk->locker, LOCK_IN_WRITE, 1);
     for (i=0;  i<num && ret == ERR_OK; i++) {
-        ret = __NK_push_buffer (nk,  
-                                buf[i], 
-                                &nk->reply_queue, 
-                                nk->config->reply_busy_percent, 
-                                nk->delegate?nk->delegate->didReceiveReplyBusyWarning:NULL);
-        //ret = DC_queue_add (&nk->reply_queue, (obj_t)buf[i], 0);
+        if (!(ret = DC_queue_add (&nk->reply_queue, (obj_t)buf[i], 0))) {
+            NK_buffer_get (buf[i]);
+        }
     }
     DC_locker_unlock (&nk->locker);
 

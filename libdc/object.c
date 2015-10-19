@@ -21,7 +21,7 @@ DC_object_t *DC_object_alloc (long size,
         strncpy(obj->class_name, cls, sizeof(obj->class_name) - 1);
         obj->PRI (release) = __release;
 
-        if (__init (obj, data) < 0) {
+        if (__init && __init (obj, data) < 0) {
             obj->PRI (release) (obj, data);
             return NULL;
         }

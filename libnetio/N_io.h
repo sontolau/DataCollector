@@ -77,7 +77,7 @@ typedef struct _NetBuf {
     INetAddress_t inet_address;
 } NetBuf_t;
 
-#define NetBufSetData(_nbuf, _buf, _szbuf)\
+#define NetBufSetBuffer(_nbuf, _buf, _szbuf)\
 do {\
     _nbuf.size   = _szbuf;\
     _nbuf.data   = _buf;\

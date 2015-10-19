@@ -21,9 +21,11 @@ typedef struct _NKBuffer {
     DC_OBJ_EXTENDS (DC_object_t);
     struct _NKPeer *peer;
     int  tag;
-    long skbuf_size;
-    NetBuf_t skbuf;
+    //long skbuf_size;
+    long size;
     long length;
+    NetBuf_t skbuf;
+    //long length;
     unsigned char buffer[0];
 } NKBuffer;
 
@@ -124,15 +126,16 @@ extern INetAddress_t *NK_buffer_get_inet_addr (NKBuffer *buf);
 extern void NK_buffer_set_inet_addr (NKBuffer *buf, INetAddress_t *addr);
 
 #define NK_buffer_get_inet_addr(_buf) (&_buf->skbuf.inet_address)
+/*
 #define NK_buffer_get_data(_buf)        (_buf->skbuf.data)
 #define NK_buffer_get_length(_buf)      (_buf->length)
 #define NK_buffer_get_size(_buf)        (_buf->skbuf.size)
 #define NK_buffer_set_data(_buf, _data, _szdata) \
 do {\
-    _buf->skbuf.size = (_szdata>_buf->skbuf_size?_buf->skbuf_size:_szdata);\
-    memcpy (_buf->buffer, _data, _buf->skbuf.size);\
+    _buf->skbuf.length = (_szdata>_buf->skbuf_size?_buf->skbuf_size:_szdata);\
+    memcpy (_buf->buffer, _data, _buf->skbuf.length);\
 } while (0)
-
+*/
 #define NK_buffer_set_inet_addr(_buf, _inet) NetBufSetInetAddress(((NetBuf_t*)&_buf->skbuf), _inet)
 
 extern void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer);
