@@ -83,9 +83,9 @@ do {\
     _nbuf.data   = _buf;\
 } while (0)
 
-#define NetBufSetInetAddress(_nbuf, _inet) (_nbuf.inet_address = _inet)
+//#define NetBufSetInetAddress(_nbuf, _inet) (_nbuf.inet_address = _inet)
 
-typedef struct _NetSockOptions {
+typedef struct _NetSockOption {
     int level;
     int name;
     void *optval;

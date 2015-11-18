@@ -10,149 +10,143 @@
 
 #include <ev.h>
 
-enum {
-    NK_NoError = 0,
-};
-
-typedef int NKError_t;
-
 struct _NKPeer;
 typedef struct _NKBuffer {
     DC_OBJ_EXTENDS (DC_object_t);
     struct _NKPeer *peer;
+    NetBuf_t iobuf;
     int  tag;
-    //long skbuf_size;
     long size;
     long length;
-    NetBuf_t skbuf;
-    //long length;
     unsigned char buffer[0];
 } NKBuffer;
 
+extern int NK_buffer_init (NKBuffer *buf);
+extern void NK_buffer_release (NKBuffer *buf);
+extern void NK_buffer_remove_peer (NKBuffer *buf);
+extern void NK_buffer_set_peer (NKBuffer *buf, struct _NKPeer *peer);
+
 enum {
-    NK_EV_READ    = 1,
-    NK_EV_WRITE,
-    NK_EV_ACCEPT,
+    NK_EV_READ    = 1 << 0,
+    NK_EV_WRITE   = 1 << 1,
+    NK_EV_ACCEPT  = 1 << 2,
+    NK_EV_RDWR    = 3,
 };
 
-#define MAX_PEER_NAME 255
+enum {
+    NK_CLIENT_PEER = 1,
+    NK_SERVER_PEER = 2,
+};
 
 typedef struct _NKPeer {
     DC_OBJ_EXTENDS (DC_object_t);
-    NetIO_t *io;
-    struct _NKPeer *to;
     struct ev_io ev_io;
-    time_t last_counter;
-    char   name[MAX_PEER_NAME+1];
-    DC_list_t sub_peers;
-    DC_list_elem_t handle;
+    int server; //server or client.
+    NetAddrInfo_t addr;
+    NetIO_t io;
+    //DC_locker_t lock;
+    DC_list_elem_t peer_list;
+    union {
+        int int_value;
+        void *pointer_value;
+    };
 } NKPeer;
+
+#define NK_peer_set_int(peer, intval) (peer->int_value = intval)
+#define NK_peer_set_pointer(peer, pt) (peer->pointer_value = pt)
+#define NK_peer_get_int(peer) (peer->int_value)
+#define NK_peer_get_pointer(peer) (peer->pointer_value)
+
+extern int NK_peer_init (NKPeer *peer);
+extern void NK_peer_release (NKPeer *peer);
 
 typedef struct _NKConfig {
     char *chdir;
     char *log;
     char *pidfile;
     int  daemon;
-    int  num_sockbufs;
+    int debug;
+    int  max_sockbufs;
     unsigned int max_sockbuf_size;
-    int num_sock_conns;
-    int  queue_size;
+    int max_peers;
+    int read_queue_size;
+    int outgoing_queue_size;
+    int incoming_queue_size;
+//    int num_readers;
+//    int num_writers;
+    int num_processors;
     unsigned int  watch_dog;
-    double memory_warn_percent;
-    double conn_warn_percent;
-    double request_busy_percent;
-    double reply_busy_percent;
+//    double memory_warn_percent;
+//    double conn_warn_percent;
+//    double request_busy_percent;
+//    double reply_busy_percent;
 } NKConfig;
 
 #define WATCH_DOG(_delay, _timeout) (((_delay&0xFFFF)<<16)|(_timeout&0xFFFF))
 #define WATCH_DOG_DELAY(_dt)  ((_dt&0xFFFF0000)>>16)
 #define WATCH_DOG_TIMEOUT(_dt) (_dt&0xFFFF)
 
-#ifndef FAST_CALL
-#define FAST_CALL
-#endif
-
 struct _NetKit;
 typedef struct _NKDelegate {
     void (*didReceiveTimer) (struct _NetKit*);
-    void (*willAcceptRemotePeer) (struct _NetKit*, NKPeer *local, NKPeer *remote);
-    void (*willClosePeer) (struct _NetKit*, NKPeer *peer);
-    void (*didSuccessToReceiveData) (struct _NetKit*, NKPeer*, NKBuffer*);
-    void (*didFailToReceiveData) (struct _NetKit*, NKPeer*);
-    FAST_CALL void (*processData) (struct _NetKit*, NKPeer*, NKBuffer*);
-    void (*didSuccessToSendData) (struct _NetKit*, NKPeer*, NKBuffer*);
-    void (*didFailToSendData) (struct _NetKit*, NKPeer*, NKBuffer*);
+    void (*didAcceptRemoteClient) (struct _NetKit*, NKPeer*, NKPeer *new);
+    void (*didFailureToReceiveData) (struct _NetKit*, NKPeer *peer);
+    int  (*didSuccessToReceiveData)(struct _NetKit*, NKPeer *peer, NKBuffer *buf);
+    void (*didSuccessToSendData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
+    void (*didFailureToSendData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
+    void (*processData) (struct _NetKit*, NKPeer*, NKBuffer*);
     void (*didReceiveSignal) (struct _NetKit*, int);
-    void (*didReceiveRequestBusyWarning) (struct _NetKit*, double);
-    void (*didReceiveReplyBusyWarning) (struct _NetKit*, double);
-    void (*didReceiveMemoryWarning) (struct _NetKit*, double);
-    void (*didReceiveConnectionWarning) (struct _NetKit*, double);
 } NKDelegate;
 
 typedef struct _NetKit {
-    DC_list_t      infaces;
+    DC_list_t      peer_set;
+    int            pfds[2];
     struct ev_loop *ev_loop;
-    DC_buffer_pool_t peer_pool;
-    DC_buffer_pool_t buffer_pool;
-    DC_buffer_pool_t io_pool;
-    DC_queue_t  request_queue;
-    DC_queue_t  reply_queue;
+    int running;
+    ev_signal *sig_map;
     DC_thread_t checker_thread;
-    DC_thread_t proc_thread;
-    DC_thread_t reply_thread;
+    //DC_task_queue_t read_queue;
+    DC_task_queue_t incoming_tasks;
+    DC_task_queue_t outgoing_tasks;
+    //DC_task_manager_t incoming_tasks;
+    //DC_task_manager_t outgoing_tasks;
+    struct {
+    	DC_buffer_pool_t peer_pool;
+    	DC_buffer_pool_t buffer_pool;
+    };
     unsigned int counter;
     NKConfig   *config;
     void        *private_data;
     DC_locker_t  locker;
     NKDelegate  *delegate;
+
+    unsigned int __rd_bytes;
+    unsigned int __proc_bytes;
+    unsigned int __wr_bytes;
 } NetKit;
+
 
 extern int NK_init (NetKit *nk, const NKConfig *config);
 extern void NK_set_delegate (NetKit *nk, NKDelegate *delegate);
 extern void NK_set_userdata (NetKit *nk, const void *data);
+extern void NK_set_signal (NetKit *nk, int);
+extern void NK_remove_signal (NetKit *nk ,int);
 extern void *NK_get_userdata (NetKit *nk);
-extern int  NK_add_netio (NetKit *nk, NetIO_t *io, int ev);
-extern void NK_remove_netio (NetKit *nk, NetIO_t *io);
+extern void NK_print_usage (const NetKit *nk);
+extern void NK_add_peer (NetKit *nk, NKPeer *peer, int ev);
+extern void NK_remove_peer (NetKit *nk, NKPeer *peer);
+extern void NK_start_peer (NetKit *nk, NKPeer *peer);
+extern void NK_stop_peer (NetKit *nk, NKPeer *peer);
 extern int NK_commit_buffer (NetKit *kit, NKBuffer *buf);
 extern int NK_commit_bulk_buffers (NetKit *kit, NKBuffer **buf, int num);
 extern int NK_run (NetKit *nk);
 extern void NK_stop (NetKit *nk);
 extern void NK_destroy (NetKit *nk);
-extern void NK_close_peer (NetKit *nk, NKPeer *peer);
-extern NKBuffer *NK_alloc_buffer (NetKit *kit);
-extern NKBuffer *NK_buffer_get (NKBuffer *buf);
-
-extern INetAddress_t *NK_buffer_get_inet_addr (NKBuffer *buf);
-extern void NK_buffer_set_inet_addr (NKBuffer *buf, INetAddress_t *addr);
-
-#define NK_buffer_get_inet_addr(_buf) (&_buf->skbuf.inet_address)
-/*
-#define NK_buffer_get_data(_buf)        (_buf->skbuf.data)
-#define NK_buffer_get_length(_buf)      (_buf->length)
-#define NK_buffer_get_size(_buf)        (_buf->skbuf.size)
-#define NK_buffer_set_data(_buf, _data, _szdata) \
-do {\
-    _buf->skbuf.length = (_szdata>_buf->skbuf_size?_buf->skbuf_size:_szdata);\
-    memcpy (_buf->buffer, _data, _buf->skbuf.length);\
-} while (0)
-*/
-#define NK_buffer_set_inet_addr(_buf, _inet) NetBufSetInetAddress(((NetBuf_t*)&_buf->skbuf), _inet)
-
-extern void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer);
-
-extern void NK_free_buffer (NetKit *kit, NKBuffer *buf);
-
-extern NKPeer *NK_alloc_peer (NetKit *kit);
-extern NKPeer *NK_peer_get (NKPeer *peer);
-#define NK_peer_set_name(_peer, _name) \
-do {\
-    if (_name) {\
-        strncpy (_peer->name, (char*)_name, MAX_PEER_NAME);\
-    }\
-} while (0)
-
-#define NK_peer_get_name(_peer) (_peer->name)
-
-extern void NK_free_peer (NetKit *kit, NKPeer *peer);
+extern NKPeer *NK_alloc_peer_with_init (NetKit *nk);
+extern NKBuffer *NK_alloc_buffer_with_init (NetKit *nk);
+extern NKPeer *NK_peer_get (NKPeer*);
+extern NKBuffer *NK_buffer_get (NKBuffer*);
+extern void NK_release_buffer(NKBuffer *buf);
+extern void NK_release_peer(NKPeer *peer);
 
 #endif

@@ -85,7 +85,7 @@ typedef long long DC_id_t;
 #define MIN(a,b)  (a>b?b:a)
 #endif
 
-
+/*
 #ifndef Dlog
 #define Dlog(_fmt, ...)  \
 do {\
@@ -102,7 +102,7 @@ do {\
 } while (0);
 
 #endif
-
+*/
 #include "error.h"
 
 #define CLASS_EXTENDS(__class)    __class PRI(super)

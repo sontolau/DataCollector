@@ -3,7 +3,7 @@ LIBDC=libdc.a libdc.so
 CC=cc
 CFLAGS=-fPIC -Wall -g
 LIBS=-lev -ljson-c
-OBJS=str.o link.o list.o queue.o locker.o object.o keyval.o hash.o buffer.o thread.o
+OBJS=str.o log.o link.o list.o queue.o locker.o object.o keyval.o hash.o buffer.o thread.o
 INCDIRS=-I./ -I/usr/include/libev -I/usr/include/json-c
 
 all: ${LIBDC}

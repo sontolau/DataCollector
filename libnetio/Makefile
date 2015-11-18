@@ -1,7 +1,8 @@
 LIBNETIO=libnetio.so libnetio.a
 LIBS=-lpthread -lgnutls -lev ${LIBNETIO} -ldc
 LIBPATH=-L./ -L../libdc
-APPS=udpserver udpsender tcpserver tcpsender
+APPS= tcpserver tcpsender
+#udpserver udpsender 
 OBJS=N_io.o N_netkit.o
 CC=clang
 FLAGS=-Wall -fPIC -g
@@ -12,10 +13,8 @@ ${LIBNETIO}: ${OBJS}
 	${CC} -shared -Wl -o libnetio.so ${OBJS}
 	ar r libnetio.a ${OBJS}
 ${APPS}:${LIBNETIO}
-	${CC} udpserver.c ${LIBPATH} ${INCDIRS} ${LIBS} -o udpserver
-	${CC} udpsender.c ${LIBPATH} ${INCDIRS} ${LIBS} -o udpsender
-	${CC} tcpserver.c ${LIBPATH} ${INCDIRS} ${LIBS} -o tcpserver
-	${CC} tcpsender.c ${LIBPATH} ${INCDIRS} ${LIBS} -o tcpsender
+	${CC} tcpserver.c ${FLAGS} ${INCDIRS} ${LIBS} -o tcpserver
+	${CC} tcpsender.c ${FLAGS} ${INCDIRS} ${LIBS} -o tcpsender
 .c.o:
 	${CC} ${FLAGS} ${INCDIRS} -c $< -o $@
 clean:

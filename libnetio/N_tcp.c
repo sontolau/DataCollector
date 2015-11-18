@@ -65,9 +65,14 @@ static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
         }
     }
 
+    newio->inet_addr.addrlen = sizeof (newio->inet_addr.addr);
     newio->fd = accept (io->fd, 
                         (struct sockaddr*)&newio->inet_addr.addr,
                         &newio->inet_addr.addrlen);
+    getpeername (newio->fd,
+                 (struct sockaddr*)&newio->inet_addr.addr,
+                 &newio->inet_addr.addrlen);
+
     newio->inet_addr.addr_info = io->inet_addr.addr_info;
     if (newio->fd < 0) {
 err_quit:
@@ -186,10 +191,12 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
         }
             break;
         case NET_IO_CTRL_READ: {
+/*
             buf->inet_address.addrlen = sizeof (buf->inet_address.addr);
             getpeername (io->fd, 
                          (struct sockaddr*)&buf->inet_address.addr, 
                          &buf->inet_address.addrlen);
+*/
             if (addr_info->flag & NET_F_SSL) {
                 return (ret = gnutls_record_recv (io->ssl.session, 
                                                           buf->data, 

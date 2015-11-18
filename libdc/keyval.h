@@ -46,25 +46,27 @@ extern void DC_keyval_setp (DC_keyval_t *kv,
 #define DC_keyval_set(_kv, _key, _type, _val) \
     DC_keyval_setp(((DC_keyval_t*)&_kv), _key, _type, (unsigned long long)_val)
 
-#define DC_keyval_eof(_kvptr)  (_kvptr->type == KV_TYPE_NO)
-#define DC_keyval_foreach(_kvptr, _kvarry) for(_kvptr=(DC_keyval_t*)(&_kvarry[0]); _kvarry && !DC_keyval_eof (_kvptr); _kvptr++)
+//#define DC_keyval_eof(_kvptr)  (_kvptr->type == KV_TYPE_NO)
+#define DC_keyval_array_foreach(_kvptr, _kvarry) \
+            for(_kvptr=(DC_keyval_t*)(&_kvarry[0]); _kvarry && _kvptr->type != KV_TYPE_NO; _kvptr++)
 
+extern  DC_keyval_t *DC_keyval_array_from_json_string (const char *jsonstr);
 
-extern  DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr);
+extern void DC_keyval_free_array (DC_keyval_t *keyval);
 
-extern const char *DC_keyval_to_json_string (const DC_keyval_t*);
+#define DC_keyval_array_set(_kv, _i, _key, _type, _val) DC_keyval_set(_kv[_i], _key, _type, _val)
 
-extern void DC_keyval_loop (DC_keyval_t*, int (*cb) (DC_keyval_t*, void*), void*);
+extern const char *DC_keyval_array_to_json_string (const DC_keyval_t*);
 
-extern int DC_keyval_length (const DC_keyval_t*);
+extern int DC_keyval_array_length (const DC_keyval_t*);
 
-extern void DC_keyval_copy (DC_keyval_t *dest, const DC_keyval_t *src);
+//extern void DC_keyval_copy (DC_keyval_t *dest, const DC_keyval_t *src);
 
-extern DC_keyval_t *DC_keyval_find (const DC_keyval_t*, const char*);
+extern DC_keyval_t *DC_keyval_array_find (const DC_keyval_t*, const char*);
 
-extern DC_keyval_t *DC_keyval_find_path (const DC_keyval_t*, const char *path[]);
+extern DC_keyval_t *DC_keyval_array_find_path (const DC_keyval_t*, const char *path[]);
 
-extern DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src);
+extern DC_keyval_t *DC_keyval_array_clone (const DC_keyval_t *src);
 
 /*
 extern void DC_keyval_free_zone (DC_keyval_t *src);

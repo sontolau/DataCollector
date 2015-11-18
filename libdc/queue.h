@@ -11,8 +11,6 @@ typedef long long   obj_t;
 
 typedef struct _DC_queue {
     unsigned int size;
-    unsigned int length;
-
     obj_t    *PRI (buffer);
     obj_t    *PRI (tail_ptr);
     obj_t    *PRI (head_ptr);
@@ -26,6 +24,8 @@ extern int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite);
 extern int DC_queue_is_empty (const DC_queue_t *queue);
 
 extern int DC_queue_is_full (const DC_queue_t *queue);
+
+extern int DC_queue_get_length (DC_queue_t *queue);
 
 extern obj_t DC_queue_fetch (DC_queue_t *queue);
 

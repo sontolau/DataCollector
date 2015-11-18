@@ -26,10 +26,7 @@ static void *__thread_cb (void *data)
             }
         }
 
-        //DC_locker_unlock (&thread->PRI (notify_obj));
-        //DC_locker_lock (&thread->PRI (notify_obj), LOCK_IN_NORMAL, 1);
     } while (1);
-    //Dlog ("The thread[%u] is exiting...\n", pthread_self ());
     thread->PRI (thread_status) = THREAD_STAT_EXITING;
     DC_locker_unlock (&thread->PRI (notify_obj));
 
@@ -67,7 +64,8 @@ int DC_thread_run (DC_thread_t *thread,
                    void  *data)
 {
     int retcode = ERR_OK;
-    if ((retcode = DC_locker_lock (&thread->PRI (notify_obj), LOCK_IN_NORMAL, 0)) != ERR_OK) {
+    if ((retcode = DC_locker_lock (&thread->PRI (notify_obj), 
+                                   LOCK_IN_NORMAL, 0)) != ERR_OK) {
         return retcode;
     }
     thread->PRI (thread_callback) = thread_cb;
@@ -104,22 +102,6 @@ void DC_thread_destroy (DC_thread_t *thread)
     DC_locker_destroy (&thread->PRI (notify_obj));
 }
 
-static void __task_core (void *data)
-{
-    DC_task_t *task = (DC_task_t*)data;
-    DC_task_manager_t *manager = task->PRI (task_manager);
-    
-    if (task->PRI (task)) {
-        task->PRI (task) (task->PRI (task_data));
-    }
-
-    DC_locker_lock (&manager->PRI (manager_lock), LOCK_IN_NORMAL, 1);
-    DC_queue_add (&manager->PRI (task_queue), (obj_t)task, 0);
-    DC_locker_notify (&manager->PRI (manager_lock), 1);
-    DC_locker_unlock (&manager->PRI (manager_lock));
-}
-
-
 int DC_task_manager_init (DC_task_manager_t *manager, 
                           int maxtasks)
 {
@@ -131,11 +113,15 @@ int DC_task_manager_init (DC_task_manager_t *manager,
     memset (manager, '\0', sizeof (DC_task_manager_t));
 
     manager->max_tasks   = maxtasks;
-    if ((ret = DC_queue_init (&manager->PRI (task_queue), maxtasks)) != ERR_OK) {
+    if ((ret = DC_queue_init (&manager->PRI (task_queue), 
+                              maxtasks)) != ERR_OK) {
         return ret;
     }
 
-    if (!(manager->PRI (task_pool) = (DC_task_t*)calloc (maxtasks, sizeof (DC_task_t)))) {
+    DC_locker_init (&manager->PRI (qlock), 0, NULL);
+
+    if (!(manager->PRI (task_pool) = (DC_task_t*)calloc (maxtasks, 
+				          sizeof (DC_task_t)))) {
         return ERR_NOMEM;
     } else {
         for (i=0; i<maxtasks; i++) {
@@ -151,6 +137,22 @@ int DC_task_manager_init (DC_task_manager_t *manager,
     return ERR_OK;
 }
 
+static void __task_core (void *data)
+{
+    DC_task_t *task = (DC_task_t*)data;
+    DC_task_manager_t *manager = task->PRI (task_manager);
+
+    if (task->PRI (task)) {
+        task->PRI (task) (task->PRI (task_data));
+    }
+
+    DC_locker_lock (&manager->PRI (qlock), LOCK_IN_NORMAL, 1);
+    DC_queue_add (&manager->PRI (task_queue), (obj_t)task, 0);
+    DC_locker_notify (&manager->PRI (qlock), 1);
+    //printf ("There are %d Tasks idled.\n", DC_queue_get_length (&manager->PRI (task_queue)));
+    DC_locker_unlock (&manager->PRI (qlock));
+}
+
 
 int DC_task_manager_run_task (DC_task_manager_t *manager,
                               void (*task_core) (void *arg),
@@ -160,24 +162,26 @@ int DC_task_manager_run_task (DC_task_manager_t *manager,
     DC_task_t   *task    = NULL;
 
     do {
-        DC_locker_lock (&manager->PRI (manager_lock), LOCK_IN_NORMAL, 1);
+	DC_locker_lock (&manager->PRI (qlock), 0, wait);
         if (DC_queue_is_empty (&manager->PRI (task_queue))) {
             if (wait) {
-                DC_locker_wait (&manager->PRI (manager_lock), 1, 0);
+                DC_locker_wait (&manager->PRI (qlock), 1, 0);
             } else {
-                DC_locker_unlock (&manager->PRI (manager_lock));
+                DC_locker_unlock (&manager->PRI (qlock));
                 return ERR_BUSY;
             }
         }
 
-        if ((task = (DC_task_t*)DC_queue_fetch (&manager->PRI (task_queue)))) {
+
+        if ((task = (DC_task_t*)(DC_task_t*)DC_queue_fetch 
+            (&manager->PRI (task_queue))) != (DC_task_t*)QZERO) {
             task->PRI (task) = task_core;
             task->PRI (task_data) = userdata;
         }
 
-        DC_locker_unlock (&manager->PRI (manager_lock));
-    } while (!task);
-
+        DC_locker_unlock (&manager->PRI (qlock));
+    } while ((obj_t)task == QZERO);
+    usleep (1);
     DC_thread_run (&task->PRI (task_thread), __task_core, task);
 
     return ERR_OK;
@@ -200,3 +204,99 @@ void DC_task_manager_destroy (DC_task_manager_t *manager)
     }
 }
 
+DC_INLINE void __do_task (void *data)
+{
+    DC_task_queue_t *qtask = (DC_task_queue_t*)data;
+    obj_t objdata;
+
+    do {
+        DC_locker_lock (&qtask->locker, 0, 1);
+	objdata = DC_queue_fetch (&qtask->queue);
+        DC_locker_unlock (&qtask->locker);
+
+        if (objdata != QZERO) {
+            qtask->task_func (qtask->data, (void*)objdata);
+        }
+    } while (objdata != QZERO);
+    //} while (objdata != QZERO);
+}
+
+
+DC_INLINE void __master_cb (void *data)
+{
+    DC_task_queue_t *qtask = (DC_task_queue_t*)data;
+    int empty = 0;
+
+    do {
+	DC_locker_lock (&qtask->locker, 0, 1);
+	empty = DC_queue_is_empty (&qtask->queue);
+	DC_locker_unlock (&qtask->locker);
+        if (!empty) {
+            if (DC_task_manager_run_task (&qtask->task_manager, 
+					  __do_task, qtask, 0) == ERR_FULL) {
+                break;
+	    }
+        }
+    } while (empty);
+}
+
+int DC_task_queue_init (DC_task_queue_t *qtask,
+                        int size,
+                        int numtasks,
+                        void (*task_func)(void*, void*),
+                        void *userdata)
+{
+    if (DC_locker_init (&qtask->locker, 0, NULL) < 0) {
+        return -1;
+    }
+
+    if (DC_thread_init (&qtask->master_thread) != ERR_OK) {
+L0:
+        DC_locker_destroy (&qtask->locker);
+        return -1;
+    }
+
+    if (DC_queue_init (&qtask->queue, size) < 0) {
+L1:
+        DC_thread_destroy (&qtask->master_thread);
+        goto L0;
+    }
+
+    if (DC_task_manager_init (&qtask->task_manager, numtasks) < 0) {
+        DC_queue_destroy (&qtask->queue);
+        goto L1;
+    }
+
+    qtask->data = userdata;
+    qtask->task_func = task_func;
+
+
+    return 0;
+}
+
+
+int DC_task_queue_run_task (DC_task_queue_t *qtask, void *object, int wait)
+{
+    int ret = ERR_OK;
+
+    if (object) {
+        DC_locker_lock (&qtask->locker, 0, wait);
+	if (!DC_queue_is_full (&qtask->queue)) {
+            DC_queue_add (&qtask->queue, (obj_t)object, 1);
+	    //printf ("The are %d objects.\n", DC_queue_get_length (&qtask->queue));
+    DC_thread_run (&qtask->master_thread, __master_cb, qtask);
+        } else {
+            ret = ERR_FULL;
+        }
+        DC_locker_unlock (&qtask->locker);
+    }
+    return ret;
+}
+
+void DC_task_queue_destroy (DC_task_queue_t *qtask)
+{
+    DC_task_manager_destroy (&qtask->task_manager);
+    DC_thread_destroy (&qtask->master_thread);
+    DC_queue_destroy (&qtask->queue);
+    DC_locker_destroy (&qtask->locker);
+}

@@ -109,7 +109,7 @@ static json_object *keyval_to_array (const DC_keyval_t *kv)
     json_object *array_obj = NULL;
     register DC_keyval_t *kvptr;
 
-    DC_keyval_foreach (kvptr, kv) {
+    DC_keyval_array_foreach (kvptr, kv) {
         if (!array_obj) array_obj = json_object_new_array ();
         switch (kvptr->type) {
             case KV_TYPE_INT: {
@@ -145,7 +145,7 @@ json_object *keyval_to_json (const DC_keyval_t *kv)
     register DC_keyval_t *kvptr = NULL;
 
     root = json_object_new_object ();    
-    DC_keyval_foreach (kvptr, kv) {
+    DC_keyval_array_foreach (kvptr, kv) {
         switch (kvptr->type) {
             case KV_TYPE_INT: {
                 json_object_object_add (root, kvptr->key, json_object_new_int (kvptr->int_value));
@@ -216,7 +216,7 @@ void DC_keyval_setp (DC_keyval_t *_kv,
     }
 }
 
-DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr)
+DC_keyval_t *DC_keyval_array_from_json_string (const char *jsonstr)
 {
     json_object *root = NULL;
 
@@ -228,18 +228,18 @@ DC_keyval_t *DC_keyval_from_json_string (const char *jsonstr)
     return keyval_from_json (root);
 }
 
-const char *DC_keyval_to_json_string (const DC_keyval_t *kv)
+const char *DC_keyval_array_to_json_string (const DC_keyval_t *kv)
 {
     json_object *json = keyval_to_json (kv);
 
     return (json?json_object_to_json_string (json):NULL);
 }
-
-void DC_keyval_loop (DC_keyval_t *kv, int (*cb) (DC_keyval_t*, void*), void *data)
+/*
+void DC_keyval_array_loop (DC_keyval_t *kv, int (*cb) (DC_keyval_t*, void*), void *data)
 {
     register DC_keyval_t *ptr = NULL;
 
-    DC_keyval_foreach (ptr, kv) {
+    DC_keyval_array_foreach (ptr, kv) {
         if (cb && !cb (ptr, data)) {
             return;
         }
@@ -247,25 +247,25 @@ void DC_keyval_loop (DC_keyval_t *kv, int (*cb) (DC_keyval_t*, void*), void *dat
         switch (ptr->type) {
             case KV_TYPE_KEYVAL:
             case KV_TYPE_ARRAY:
-                DC_keyval_loop (ptr->keyval_value, cb, data);
+                DC_keyval_array_loop (ptr->keyval_value, cb, data);
             break;
         }
     }
 }
-
-int DC_keyval_length (const DC_keyval_t *kvrry)
+*/
+int DC_keyval_array_length (const DC_keyval_t *kvrry)
 {
     int len = 0;
     register DC_keyval_t *ptr;
 
-    DC_keyval_foreach (ptr, kvrry) {
+    DC_keyval_array_foreach (ptr, kvrry) {
         len++;
     }
  
     return len;   
 }
 
-void DC_keyval_copy (DC_keyval_t *dest, const DC_keyval_t *src)
+void DC_keyval_array_copy (DC_keyval_t *dest, const DC_keyval_t *src)
 {
     register DC_keyval_t *srcptr, *dstptr;
 
@@ -274,14 +274,14 @@ void DC_keyval_copy (DC_keyval_t *dest, const DC_keyval_t *src)
     srcptr = (DC_keyval_t*)src;
     dstptr = dest;
 
-    while (!(DC_keyval_eof (srcptr) || DC_keyval_eof (dstptr))) {
+    while (!(srcptr->type == KV_TYPE_NO || dstptr->type == KV_TYPE_NO)) {
         memcpy (dstptr, srcptr, sizeof (DC_keyval_t));
         srcptr++;
         dstptr++;
     }
 }
 
-DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
+DC_keyval_t *DC_keyval_array_clone (const DC_keyval_t *src)
 {
     int len = 0;
     DC_keyval_t *dst = NULL;
@@ -289,7 +289,7 @@ DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
 
     if (src == NULL) return NULL;
 
-    len = DC_keyval_length (src);
+    len = DC_keyval_array_length (src);
     dst = calloc (len + 1, sizeof (DC_keyval_t));
     //DC_keyval_alloc (dst, len);
     if (dst) {
@@ -300,7 +300,7 @@ DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
                     break;
                 case KV_TYPE_KEYVAL:
                 case KV_TYPE_ARRAY:
-                    DC_keyval_set (dst[i], src[i].key, src[i].type, DC_keyval_clone (src[i].keyval_value));
+                    DC_keyval_set (dst[i], src[i].key, src[i].type, DC_keyval_array_clone (src[i].keyval_value));
                     break;
                 default:
                     memcpy (&dst[i], &src[i], sizeof (DC_keyval_t));
@@ -311,21 +311,22 @@ DC_keyval_t *DC_keyval_clone (const DC_keyval_t *src)
 
     return dst;
 }
-/*
-void DC_keyval_free_zone (DC_keyval_t *kv)
+
+void DC_keyval_free_array (DC_keyval_t *kv)
+//void DC_keyval_free_zone (DC_keyval_t *kv)
 {
     register DC_keyval_t *ptr;
 
     if (kv == NULL) return;
 
-    DC_keyval_foreach (ptr, kv) {
+    DC_keyval_array_foreach (ptr, kv) {
         switch (ptr->type) {
             case KV_TYPE_STRING:
                 free (ptr->string_value);
                 break;
             case KV_TYPE_ARRAY:
             case KV_TYPE_KEYVAL:
-                DC_keyval_free_zone (ptr->keyval_value);
+                DC_keyval_free_array (ptr->keyval_value);
                 free (ptr->keyval_value);
                 break;
             default:
@@ -333,43 +334,26 @@ void DC_keyval_free_zone (DC_keyval_t *kv)
         }
     }
 }
-static int __keyval_find_helper (DC_keyval_t *kv, void *data)
-{
-    void **passinfo = (void**)data;
-    void **retptr   = (void**)passinfo[0];
-    char *key       = (char*)passinfo[1];
-
-    if (!strcmp (key, kv->key)) {
-        *retptr = kv;
-        return 0;
-    }
-
-    return 1;
-}
-*/
 DC_keyval_t *DC_keyval_find (const DC_keyval_t *kvset, const char *key)
 {
     DC_keyval_t *ptr = NULL;
-    //void *passinfo[] = {(void*)(&ptr), (DC_keyval_t*)key, NULL};
-    DC_keyval_foreach (ptr, kvset) {
+    DC_keyval_array_foreach (ptr, kvset) {
         if (!strcmp (ptr->key, key)) {
             return ptr;
         }
     }
 
-    //DC_keyval_loop ((DC_keyval_t*)kvset, __keyval_find_helper, (void*)passinfo);
-
-    return ptr;
+    return NULL;
 }
 
-DC_keyval_t *DC_keyval_find_path (const DC_keyval_t *kvset, const char *path[])
+DC_keyval_t *DC_keyval_array_find_path (const DC_keyval_t *kvset, const char *path[])
 {
     DC_keyval_t *ptr = NULL;
 
     ptr = DC_keyval_find (kvset, path[0]);
     if (ptr) {
         if (ptr->type == KV_TYPE_KEYVAL && path[1]) {
-            return DC_keyval_find_path (ptr, &path[1]);
+            return DC_keyval_array_find_path (ptr->keyval_value, &path[1]);
         } else if (path[1]) {
             return NULL;
         }

@@ -55,9 +55,9 @@ typedef struct _DC_task {
 
 typedef struct _DC_task_manager {
     int           max_tasks;
-
+    DC_locker_t   PRI (qlock);
     DC_queue_t    PRI (task_queue);
-    DC_locker_t   PRI (manager_lock);
+    //DC_locker_t   PRI (manager_lock);
     DC_task_t     *PRI (task_pool);
 } DC_task_manager_t;
 
@@ -68,8 +68,29 @@ extern int DC_task_manager_run_task (DC_task_manager_t *pool,
                                      void (*task) (void *arg),
                                      void *userdata,
                                      long wait);
+
 extern void DC_task_manager_destroy (DC_task_manager_t *pool);
 
+
+typedef struct _DC_task_queue {
+
+    DC_thread_t    master_thread;
+    DC_locker_t    locker;
+    DC_queue_t     queue;
+    DC_task_manager_t  task_manager;
+    void *data;
+    void (*task_func) (void *userdata, void *object);
+} DC_task_queue_t;
+
+extern int DC_task_queue_init (DC_task_queue_t *qtask,
+                               int size,
+                               int numtasks,
+                               void (*task_func)(void*, void*),
+                               void *userdata);
+
+extern int DC_task_queue_run_task (DC_task_queue_t *qtask, void *object, int wait);
+
+extern void DC_task_queue_destroy (DC_task_queue_t *qtask);
 
 DC_CPP (})
 

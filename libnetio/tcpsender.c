@@ -23,19 +23,23 @@ int main (int argc, char *argv[]) {
         exit (1);
     }
     getchar ();
-/*
     while (1) {
         char *str = "How are you";
-        NetBufSetData (nbuf, (unsigned char*)str, strlen (str));
-        NetBufSetInetAddress(nbuf, io.inet_addr);
-        NetIOWrite (&io, &nbuf);
+        nbuf.data = str;
+        nbuf.size = strlen (str);
+
+        if (NetIOWrite (&io, &nbuf) < 0) {
+           printf ("Send data failed.\n");
+        }
+	usleep (atoi (argv[3]));
+/*
         nbuf.data = buf;
         nbuf.size = 1000;
         long szread = NetIORead (&io, &nbuf);
         nbuf.data[szread] = '\0';
         printf ("Received: %s\n", nbuf.data);
-    } while (0);
 */
+    } while (0);
     NetIODestroy (&io);
     return 0;
 }

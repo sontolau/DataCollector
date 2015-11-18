@@ -93,7 +93,7 @@ int DC_hash_add_object (DC_hash_t *hash, DC_key_t key, DC_hash_elem_t *obj) {
                          key,
                          hash->PRI (id_cb),
                          hash->data);
-
+    hash->num_objects++;
     DC_list_add_object (list, &obj->PRI (hash_list));
     DC_list_add_object (&hash->PRI (array_nodes), &obj->PRI (array_list));
 
