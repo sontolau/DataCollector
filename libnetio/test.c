@@ -3,9 +3,10 @@
 static int i = 0;
 static int y = 0;
 
-void task_func (void *d1, void *d2)
+void task_func (void *d1)
 {
-    printf ("%d: %s\n", ++i, (char*)d2);
+    printf ("Counter: %d", ++i);
+    usleep (1)
 }
 
 #define HELLO "hello\n"
@@ -13,6 +14,12 @@ void task_func (void *d1, void *d2)
 DC_task_queue_t task_queue;
 void main ()
 {
+   DC_thread_t thread;
+
+   DC_thread_init (&thread);
+   while (1) {
+       DC_thread_run (&thread, task_func, NULL);
+   }
 #if 0
     #endif
     

@@ -19,7 +19,8 @@ typedef void (*DC_thread_func_t)(void *userdata);
 
 typedef struct _DC_thread {
     DC_thread_func_t PRI (thread_callback);
-    
+
+    unsigned int  PRI (every_ms);   
     //private fields.
     DC_locker_t   PRI (notify_obj);
     void*         PRI (user_data);
@@ -34,7 +35,8 @@ typedef struct _DC_thread {
 } DC_thread_t;
 
 
-extern int DC_thread_init (DC_thread_t *thread);
+extern int DC_thread_init (DC_thread_t *thread, 
+                           unsigned int ms);
 
 extern int DC_thread_run (DC_thread_t *thread,
                           DC_thread_func_t  thread_cb, 
@@ -73,7 +75,7 @@ extern void DC_task_manager_destroy (DC_task_manager_t *pool);
 
 
 typedef struct _DC_task_queue {
-
+    int dirty;
     DC_thread_t    master_thread;
     DC_locker_t    locker;
     DC_queue_t     queue;

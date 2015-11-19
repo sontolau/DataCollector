@@ -266,6 +266,7 @@ static DC_object_t *NK_malloc (const char *cls,
         } else {
             peer = calloc (1, sizeof (NKPeer));
         }
+        //Dlog ("Allocated: %p\n", peer);
         DC_locker_unlock (&nk->locker);
         return (DC_object_t*)peer;
 
@@ -333,6 +334,7 @@ static void NK_release (DC_object_t *obj, void *data)
         } else {
             free (obj);
         }
+        //Dlog ("Freed: %p.", obj);
     } else if (DC_object_is_kind_of (obj, "NKBuffer")) {
         NK_buffer_release ((NKBuffer*)obj);
         if (nk->config->max_sockbufs) {

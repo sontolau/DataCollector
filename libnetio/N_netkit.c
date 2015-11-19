@@ -342,7 +342,7 @@ int NK_init (NetKit *nk, const NKConfig *cfg)
         return -1;
     }
 
-    if (DC_thread_init (&nk->checker_thread) != ERR_OK) {
+    if (DC_thread_init (&nk->checker_thread, 0) != ERR_OK) {
         return -1;
     }
 
