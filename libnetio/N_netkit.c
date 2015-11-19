@@ -2,10 +2,6 @@
 #include "N_netkit.h"
 #include "N_helper.c"
 
-extern int NK_wrlock ();
-extern int NK_rdlock ();
-extern void NK_unlock ();
-
 static NKConfig DefaultConfig = {
     .chdir = NULL,
     .log   = NULL,
@@ -102,12 +98,9 @@ static void __do_read(NetKit *nk, NKPeer *peer)
 static void __do_process(NetKit *nk, NKPeer *peer, NKBuffer *nkbuf) 
 {
     nk->__proc_bytes += nkbuf->length;
-/*
     if (nk->delegate && nk->delegate->processData) {
 	nk->delegate->processData(nk, peer, nkbuf);
     }
-*/
-    //printf ("%s\n", __func__);
     NK_release_buffer(nkbuf);
 }
 
@@ -251,9 +244,9 @@ DC_INLINE void __NK_check_callback (void *data)
 
     DC_list_init (&tmplist, NULL, NULL, NULL);
     while (1) {
-        NK_wrlock (nk, 1);
+        DC_locker_lock (nk, 1);
         ele = DC_list_next_object (&nk->infaces, &saveptr);
-        if (!ele) { NK_unlock (nk); break;}
+        if (!ele) { DC_locker_unlock (nk); break;}
 
         peer = CONTAINER_OF (ele, NKPeer, handle);
         while (peer->sub_peers.count > 0 && 
@@ -269,7 +262,7 @@ DC_INLINE void __NK_check_callback (void *data)
                 break;
             }
         }
-        NK_unlock (nk);
+        DC_locker_unlock (nk);
     }
     
     while (tmplist.count > 0 && (ele = DC_list_get_object_at_index (&tmplist, 0))) {
@@ -430,16 +423,16 @@ int NK_run (NetKit *nk)
 
 void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
 {
-	NK_wrlock (nk, 1);
+    DC_locker_lock (&nk->locker, 0, 1);
 
-	if (ev == NK_EV_ACCEPT) {
-		ev_io_init(&peer->ev_io, __NK_accept_callback, peer->io.fd, EV_READ);
-	} else if (ev == NK_EV_READ) {
-		ev_io_init(&peer->ev_io, __NK_read_callback, peer->io.fd, EV_READ);
-	} else if (ev == NK_EV_WRITE) {
-		ev_io_init(&peer->ev_io, __NK_write_callback, peer->io.fd, EV_WRITE);
-	} else if (ev == NK_EV_RDWR) {
-	}
+    if (ev == NK_EV_ACCEPT) {
+        ev_io_init(&peer->ev_io, __NK_accept_callback, peer->io.fd, EV_READ);
+    } else if (ev == NK_EV_READ) {
+	ev_io_init(&peer->ev_io, __NK_read_callback, peer->io.fd, EV_READ);
+    } else if (ev == NK_EV_WRITE) {
+	ev_io_init(&peer->ev_io, __NK_write_callback, peer->io.fd, EV_WRITE);
+    } else if (ev == NK_EV_RDWR) {
+    }
 
 /*
     //peer->ev = ev;
@@ -452,34 +445,32 @@ void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
     DC_list_add_object (&nk->peer_set, &peer->peer_list);
     peer->ev_io.data = peer;
     ev_io_start (nk->ev_loop, &peer->ev_io);
-    DC_object_get ((DC_object_t*)peer);
-    //NK_sync (nk);
-    NK_unlock (nk);
+    NK_peer_get (peer);
+    DC_locker_unlock (&nk->locker);
 }
 
 void NK_remove_peer (NetKit *nk, NKPeer *peer)
 {
-	NK_wrlock (nk, 1);
+    DC_locker_lock (&nk->locker, 0, 1);
     DC_list_remove_object (&nk->peer_set, &peer->peer_list);
     ev_io_stop (nk->ev_loop, &peer->ev_io);
-    //NK_sync (nk);
-    NK_unlock (nk);
+    DC_locker_unlock (&nk->locker);
     NK_release_peer (peer);
 }
 
 void NK_stop_peer (NetKit *nk, NKPeer *peer)
 {
-	NK_wrlock (nk, 1);
-	ev_io_stop (nk->ev_loop, &peer->ev_io);
-    NK_unlock (nk);
+    DC_locker_lock (&nk->locker, 0, 1);
+    ev_io_stop (nk->ev_loop, &peer->ev_io);
+    DC_locker_unlock (&nk->locker);
 }
 
 void NK_start_peer (NetKit *nk, NKPeer *peer)
 {
-	NK_wrlock (nk, 1);
+    DC_locker_lock (&nk->locker, 0, 1);
     ev_io_start (nk->ev_loop, &peer->ev_io);
     //NK_sync (nk);
-    NK_unlock (nk);
+    DC_locker_unlock (&nk->locker);
 
 }
 

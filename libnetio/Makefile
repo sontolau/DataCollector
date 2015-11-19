@@ -4,7 +4,7 @@ LIBPATH=-L./ -L../libdc
 APPS= tcpserver tcpsender
 #udpserver udpsender 
 OBJS=N_io.o N_netkit.o
-CC=clang
+CC=cc
 FLAGS=-Wall -fPIC -g
 INCDIRS=-I./ -I../
 

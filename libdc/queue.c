@@ -58,7 +58,7 @@ int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
     return ERR_OK;
 }
 
-int DC_queue_get_length (DC_queue_t *queue)
+int DC_queue_get_length (const DC_queue_t *queue)
 {
     if (DC_queue_is_empty (queue)) return 0;
     if (DC_queue_is_full (queue)) return queue->size;

@@ -25,7 +25,7 @@ extern int DC_queue_is_empty (const DC_queue_t *queue);
 
 extern int DC_queue_is_full (const DC_queue_t *queue);
 
-extern int DC_queue_get_length (DC_queue_t *queue);
+extern int DC_queue_get_length (const DC_queue_t *queue);
 
 extern obj_t DC_queue_fetch (DC_queue_t *queue);
 
