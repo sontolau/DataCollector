@@ -189,4 +189,6 @@ class netio:
             print str(e)
             return False
 
-
+    def did_connect (self, conn):
+        pass
+    

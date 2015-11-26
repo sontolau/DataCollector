@@ -45,6 +45,7 @@ extern DC_list_elem_t *DC_list_get_object_at_index (DC_list_t *list, unsigned in
 extern DC_list_elem_t *DC_list_remove_object_at_index (DC_list_t *list, 
                                             unsigned int index);
 
+extern void *DC_list_from (DC_list_elem_t *elem);
 //
 extern void DC_list_remove_all_objects (DC_list_t *list);
 

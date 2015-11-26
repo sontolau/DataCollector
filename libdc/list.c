@@ -101,6 +101,14 @@ void DC_list_remove_object (DC_list_t *list, DC_list_elem_t *obj)
     list->count--;
 }
 
+void *DC_list_from (DC_list_elem_t *elem)
+{
+    if (!elem) return NULL;
+
+    return CONTAINER_OF (elem ,DC_list_elem_t, PRI (link));
+}
+
+
 void DC_list_remove_all_objects (DC_list_t *list)
 {
     while (list->count > 0) {

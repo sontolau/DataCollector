@@ -45,6 +45,15 @@ int NK_sync (NetKit *nk)
     //return (write (nk->pfds[1], &pev, sizeof (pev)) == sizeof (pev))?0:1;
 }
 
+static void __update_peer (NetKit *nk, NKPeer *peer)
+{
+    DC_locker_lock (&nk->locker, 0, 1);
+    peer->last_update = nk->counter;
+    
+    DC_list_remove_object (&nk->peer_set, &peer->peer_list);
+    DC_list_add_object (&nk->peer_set, &peer->peer_list);
+    DC_locker_unlock (&nk->locker);
+}
 
 static void __do_accept (NetKit *nk, NKPeer *peer)
 {
@@ -79,15 +88,16 @@ static void __do_read(NetKit *nk, NKPeer *peer)
             nk->delegate->didFailureToReceiveData (nk, peer);
         }
     } else {
-	nk->__rd_bytes += nkbuf->length;
+	    nk->__rd_bytes += nkbuf->length;
         if (nk->delegate && nk->delegate->didSuccessToReceiveData) {
             if (nk->delegate->didSuccessToReceiveData (nk, peer, nkbuf)) {
-                 NK_buffer_set_peer (nkbuf, peer);
-		 if (DC_task_queue_run_task (&nk->incoming_tasks, nkbuf, 1) != ERR_OK) {
-       	             Wlog ("[NetKit] the incoming queue is full.");
-                 } else {
-	             NK_buffer_get (nkbuf);
-	         }
+                NK_buffer_set_peer (nkbuf, peer);
+		        if (DC_task_queue_run_task (&nk->incoming_tasks, nkbuf, 1) != ERR_OK) {
+       	            Wlog ("[NetKit] the incoming queue is full.");
+                } else {
+	                NK_buffer_get (nkbuf);
+	            }
+                __update_peer (nk, peer);
             }
         }
     }
@@ -115,7 +125,7 @@ static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf)
             nk->delegate->didFailureToSendData (nk, peer, nkbuf);
         }
     } else {
-	nk->__wr_bytes += nkbuf->length;
+	    nk->__wr_bytes += nkbuf->length;
         if (nk->delegate && nk->delegate->didSuccessToSendData) {
             nk->delegate->didSuccessToSendData (nk, peer, nkbuf);
         }
@@ -233,44 +243,31 @@ DC_INLINE int __NK_pipe_init (NetKit *nk)
     return 0;
 }
 
-DC_INLINE void __NK_check_callback (void *data)
+DC_INLINE void __NK_peer_checker (void *data)
 {
-/*
-    NetKit *nk = (NetKit*)data;
-    DC_list_elem_t *ele = NULL;
     void *saveptr = NULL;
-    NKPeer *peer = NULL, *subpeer = NULL;
-    DC_list_t   tmplist;
+    NetKit *nk = (NetKit*)data;
+    NKPeer *peer = NULL;
 
-    DC_list_init (&tmplist, NULL, NULL, NULL);
-    while (1) {
-        DC_locker_lock (nk, 1);
-        ele = DC_list_next_object (&nk->infaces, &saveptr);
-        if (!ele) { DC_locker_unlock (nk); break;}
+    if (!WATCH_DOG_TIMEOUT (nk->config->watch_dog)) {
+        return;
+    }
 
-        peer = CONTAINER_OF (ele, NKPeer, handle);
-        while (peer->sub_peers.count > 0 && 
-               (ele = DC_list_get_object_at_index (&peer->sub_peers, 
-                                               peer->sub_peers.count - 1))) {
-            subpeer = CONTAINER_OF (ele, NKPeer, handle);
-            if (nk->counter - subpeer->last_counter 
-                > WATCH_DOG_TIMEOUT (nk->config->watch_dog)) {
-                subpeer->to = NULL;
-                DC_list_remove_object_at_index (&peer->sub_peers, peer->sub_peers.count-1);
-                DC_list_add_object (&tmplist, ele);
-            } else {
-                break;
+    saveptr = &nk->peer_set;
+    do {
+        DC_locker_lock (&nk->locker, 0, 1);
+        peer = DC_list_from (DC_list_next_object (saveptr, &saveptr));
+        DC_locker_unlock (&nk->locker);
+
+        if (peer && nk->counter - peer->last_update > WATCH_DOG_TIMEOUT (nk->config->watch_dog)) {
+            if (nk->delegate && nk->delegate->didReceiveDataTimedout) {
+                nk->delegate->didReceiveDataTimedout (nk, peer);
             }
+        } else {
+            break;
         }
-        DC_locker_unlock (nk);
-    }
-    
-    while (tmplist.count > 0 && (ele = DC_list_get_object_at_index (&tmplist, 0))) {
-        peer = CONTAINER_OF (ele, NKPeer, handle);
-        DC_list_remove_object_at_index (&tmplist, 0);
-        NK_close_peer (nk, peer);
-        NK_release_peer (nk, peer);
-    }
+    } while (peer);
+/*
 */
 }
 
@@ -284,21 +281,20 @@ void NK_print_usage (const NetKit *nk)
 
     if (nk->config->debug) {
         Dlog ("**************** NetKit Account Information *****************");
-	Dlog ("Seconds: %u", secs);
+	    Dlog ("Seconds: %u", secs);
         Dlog ("Read: %u(bytes), %f(ms)", nk->__rd_bytes, read_rate);
         Dlog ("Write: %u(bytes), %f(ms)", nk->__wr_bytes, write_rate);
         Dlog ("Process: %u(bytes), %f(ms)", nk->__proc_bytes, proc_rate);
-	Dlog ("\n");
-	Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
-	Dlog ("Packets In Processing: %u", DC_queue_get_length (&nk->incoming_tasks.queue));
-	Dlog ("\n");
+	    Dlog ("\n");
+	    Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
+	    Dlog ("Packets In Processing: %u", DC_queue_get_length (&nk->incoming_tasks.queue));
+	    Dlog ("\n");
     }
 }
 
 DC_INLINE void __NK_timer_callback (struct ev_loop *ev, ev_timer *w, int revents)
 {
     NetKit *nk = ev_userdata (ev);
-    unsigned int timeout = WATCH_DOG_TIMEOUT (nk->config->watch_dog);
     
     if (nk->config->debug) {
         NK_print_usage (nk);
@@ -308,9 +304,11 @@ DC_INLINE void __NK_timer_callback (struct ev_loop *ev, ev_timer *w, int revents
     if (nk->delegate && nk->delegate->didReceiveTimer) {
         nk->delegate->didReceiveTimer (nk);
     }
+/*
     if (timeout && !(nk->counter % timeout)) {
-        DC_thread_run (&nk->checker_thread, __NK_check_callback, nk);
+        DC_thread_run (&nk->watch_dog, __NK_check_callback, nk);
     }
+*/
 }
 
 DC_INLINE void __NK_signal_callback (struct ev_loop *ev, ev_signal *w, int revents)
@@ -342,8 +340,10 @@ int NK_init (NetKit *nk, const NKConfig *cfg)
         return -1;
     }
 
-    if (DC_thread_init (&nk->checker_thread, 0) != ERR_OK) {
+    if (DC_thread_init (&nk->watch_dog, WATCH_DOG_DELAY (cfg->watch_dog) * 1000) != ERR_OK) {
         return -1;
+    } else {
+        DC_thread_run (&nk->watch_dog, __NK_peer_checker, nk);
     }
 
     //DC_task_queue_init (&nk->read_queue, cfg->read_queue_size, cfg->num_readers, __NK_read_cb, nk);
@@ -444,6 +444,7 @@ void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
 */
     DC_list_add_object (&nk->peer_set, &peer->peer_list);
     peer->ev_io.data = peer;
+    peer->last_update = nk->counter;
     ev_io_start (nk->ev_loop, &peer->ev_io);
     NK_peer_get (peer);
     DC_locker_unlock (&nk->locker);

@@ -44,6 +44,7 @@ typedef struct _NKPeer {
     int server; //server or client.
     NetAddrInfo_t addr;
     NetIO_t io;
+    unsigned int last_update;
     //DC_locker_t lock;
     DC_list_elem_t peer_list;
     union {
@@ -93,6 +94,7 @@ typedef struct _NKDelegate {
     void (*didFailureToReceiveData) (struct _NetKit*, NKPeer *peer);
     int  (*didSuccessToReceiveData)(struct _NetKit*, NKPeer *peer, NKBuffer *buf);
     void (*didSuccessToSendData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
+    void (*didReceiveDataTimedout) (struct _NetKit*, NKPeer*);
     void (*didFailureToSendData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
     void (*processData) (struct _NetKit*, NKPeer*, NKBuffer*);
     void (*didReceiveSignal) (struct _NetKit*, int);
@@ -104,12 +106,9 @@ typedef struct _NetKit {
     struct ev_loop *ev_loop;
     int running;
     ev_signal *sig_map;
-    DC_thread_t checker_thread;
-    //DC_task_queue_t read_queue;
+    DC_thread_t watch_dog;
     DC_task_queue_t incoming_tasks;
     DC_task_queue_t outgoing_tasks;
-    //DC_task_manager_t incoming_tasks;
-    //DC_task_manager_t outgoing_tasks;
     struct {
     	DC_buffer_pool_t peer_pool;
     	DC_buffer_pool_t buffer_pool;
