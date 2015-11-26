@@ -126,7 +126,7 @@ int DC_task_manager_init (DC_task_manager_t *manager,
     }
 
     DC_locker_init (&manager->PRI (qlock), 0, NULL);
-
+    DC_locker_init (&manager->PRI (res_lock), 0, NULL);
     if (!(manager->PRI (task_pool) = (DC_task_t*)calloc (maxtasks, 
 				          sizeof (DC_task_t)))) {
         return ERR_NOMEM;
@@ -168,28 +168,29 @@ int DC_task_manager_run_task (DC_task_manager_t *manager,
     DC_task_t   *task    = NULL;
 
     do {
-	    if (DC_locker_lock (&manager->PRI (qlock), 0, wait) != ERR_OK) {
+        if (DC_locker_lock (&manager->PRI (res_lock), 0, wait) != ERR_OK) {
             return ERR_BUSY;
         }
 
         if (DC_queue_is_empty (&manager->PRI (task_queue))) {
             if (wait) {
+                DC_locker_lock (&manager->PRI (qlock), 0, wait);
                 DC_locker_wait (&manager->PRI (qlock), 1, 0);
             } else {
-                DC_locker_unlock (&manager->PRI (qlock));
+                DC_locker_unlock (&manager->PRI (res_lock));
                 return ERR_BUSY;
             }
         }
 
 
-        if ((task = (DC_task_t*)(DC_task_t*)DC_queue_fetch 
-            (&manager->PRI (task_queue)))) {
+        if ((task = (DC_task_t*)(DC_task_t*)DC_queue_fetch (&manager->PRI (task_queue)))) {
             task->PRI (task) = task_core;
             task->PRI (task_data) = userdata;
             DC_thread_run (&task->PRI (task_thread), __task_core, task);
         }
 
         DC_locker_unlock (&manager->PRI (qlock));
+        DC_locker_unlock (&manager->PRI (res_lock));
     } while (task);
 
     return ERR_OK;
@@ -205,6 +206,8 @@ void DC_task_manager_destroy (DC_task_manager_t *manager)
             DC_thread_destroy (&task->PRI (task_thread));
         }
 
+        DC_locker_destroy (&manager->PRI (qlock));
+        DC_locker_destroy (&manager->PRI (res_lock));
         DC_queue_destroy (&manager->PRI (task_queue));
         if (manager->PRI (task_pool)) {
             free (manager->PRI (task_pool));
@@ -217,10 +220,10 @@ DC_INLINE void __do_task (void *data)
     DC_task_queue_t *qtask = (DC_task_queue_t*)data;
     obj_t objdata;
 
-    //Dlog ("[task] task %u is running.", pthread_self ());
     do {
         DC_locker_lock (&qtask->locker, 0, 1);
-        if ((objdata = DC_queue_fetch (&qtask->queue))) {
+        if (DC_queue_get_length (&qtask->queue) > 0) {
+            objdata = DC_queue_fetch (&qtask->queue);
             DC_locker_unlock (&qtask->locker);
             qtask->task_func (qtask->data, (void*)objdata);
         } else {
@@ -228,7 +231,6 @@ DC_INLINE void __do_task (void *data)
             break;
         }
     } while (1);
-    //Dlog ("[task] task %u is stoped.", pthread_self ());
 }
 
 
@@ -238,28 +240,29 @@ DC_INLINE void __master_cb (void *data)
     int ret;
 
     do {
-        //do {
-            DC_locker_lock (&qtask->locker, 0, 1);
-            if (DC_queue_is_empty (&qtask->queue)) {
-                DC_locker_unlock (&qtask->locker);
-                break;
-                //ret = DC_locker_wait (&qtask->locker, 1, 0);
-            } else {
-                Dlog ("process queue....");
-                ret = ERR_OK;
-            }
+        Dlog ("%u thread process queue.", pthread_self ());
+        DC_locker_lock (&qtask->locker, 0, 1);
+        if (DC_queue_is_empty (&qtask->queue)) {
+            DC_locker_unlock (&qtask->locker);
+            break;
+        } else {
+            ret = ERR_OK;
+        }
 
-            if (ret == ERR_OK) {
-                DC_locker_unlock (&qtask->locker);
-               // break;
-            }
-        //} while (1);
-        
+        if (ret == ERR_OK) {
+            DC_task_manager_run_task (&qtask->task_manager,
+                                  __do_task,
+                                  qtask,
+                                  0);
+
+            DC_locker_unlock (&qtask->locker);
+        }
+/*        
         DC_task_manager_run_task (&qtask->task_manager,
                                   __do_task,
                                   qtask,
-                                  1);
-        
+                                  0);
+*/        
     } while (1);
 }
 
@@ -295,15 +298,13 @@ L1:
     qtask->data = userdata;
     qtask->task_func = task_func;
 
-    //DC_thread_run (&qtask->master_thread, __master_cb, qtask);
+    DC_thread_run (&qtask->master_thread, __master_cb, qtask);
 
     return 0;
 }
 
 
-int DC_task_queue_run_task (DC_task_queue_t *qtask, 
-                            void *object, 
-                            int wait)
+int DC_task_queue_run_task (DC_task_queue_t *qtask, void *object, int wait)
 {
     int ret = ERR_OK;
 
@@ -312,13 +313,12 @@ int DC_task_queue_run_task (DC_task_queue_t *qtask,
             return ERR_BUSY;
         }
 	    if (!DC_queue_is_full (&qtask->queue)) {
+            
             DC_queue_add (&qtask->queue, (obj_t)object, 1);
         } else {
             ret = ERR_FULL;
         }
-        DC_thread_run (&qtask->master_thread,
-                       __master_cb,
-                       qtask);
+        DC_thread_run (&qtask->master_thread, __master_cb, qtask);
         DC_locker_unlock (&qtask->locker);
     }
     return ret;

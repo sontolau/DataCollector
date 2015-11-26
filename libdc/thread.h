@@ -58,6 +58,7 @@ typedef struct _DC_task {
 typedef struct _DC_task_manager {
     int           max_tasks;
     DC_locker_t   PRI (qlock);
+    DC_locker_t   PRI (res_lock);
     DC_queue_t    PRI (task_queue);
     //DC_locker_t   PRI (manager_lock);
     DC_task_t     *PRI (task_pool);

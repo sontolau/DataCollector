@@ -31,14 +31,12 @@ int main (int argc, char *argv[]) {
         if (NetIOWrite (&io, &nbuf) < 0) {
            printf ("Send data failed.\n");
         }
-/*
         nbuf.data = buf;
         nbuf.size = 1000;
         long szread = NetIORead (&io, &nbuf);
         nbuf.data[szread] = '\0';
         printf ("Received: %s\n", nbuf.data);
-*/
-	usleep (atoi (argv[3]));
+	   usleep (atoi (argv[3]));
     } while (0);
     NetIODestroy (&io);
     return 0;

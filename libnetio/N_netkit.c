@@ -112,8 +112,6 @@ static void __do_process(NetKit *nk, NKPeer *peer, NKBuffer *nkbuf)
     if (nk->delegate && nk->delegate->processData) {
 	    nk->delegate->processData(nk, peer, nkbuf);
     }
-
-    printf ("%p, refcount: %d\n", nkbuf, nkbuf->super.refcount);
 }
 
 static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf) 
@@ -168,11 +166,11 @@ DC_INLINE void __NK_process_cb (void *userdata, void *data)
 
     nkbuf = (NKBuffer*)data;
     peer    = nkbuf->peer;
-    DC_locker_lock (&peer->lock, 0 ,1);
+    //DC_locker_lock (&peer->lock, 0 ,1);
     __do_process (nk, peer, nkbuf);
     NK_buffer_remove_peer (nkbuf);
     NK_release_buffer (nkbuf);
-    DC_locker_unlock (&peer->lock);
+    //DC_locker_unlock (&peer->lock);
     NK_sync (nk);
 }
 
@@ -288,7 +286,7 @@ void NK_print_usage (const NetKit *nk)
         Dlog ("Write: %u(bytes), %f(ms)", nk->__wr_bytes, write_rate);
         Dlog ("Process: %u(bytes), %f(ms)", nk->__proc_bytes, proc_rate);
 	    Dlog ("\n");
-	    //Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
+	    Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
 	    Dlog ("Packets In Processing: %u", DC_queue_get_length (&nk->incoming_tasks.queue));
 	    Dlog ("\n");
     }
@@ -306,11 +304,6 @@ DC_INLINE void __NK_timer_callback (struct ev_loop *ev, ev_timer *w, int revents
     if (nk->delegate && nk->delegate->didReceiveTimer) {
         nk->delegate->didReceiveTimer (nk);
     }
-/*
-    if (timeout && !(nk->counter % timeout)) {
-        DC_thread_run (&nk->watch_dog, __NK_check_callback, nk);
-    }
-*/
 }
 
 DC_INLINE void __NK_signal_callback (struct ev_loop *ev, ev_signal *w, int revents)
@@ -348,17 +341,10 @@ int NK_init (NetKit *nk, const NKConfig *cfg)
         DC_thread_run (&nk->watch_dog, __NK_peer_checker, nk);
     }
 
-    //DC_task_queue_init (&nk->read_queue, cfg->read_queue_size, cfg->num_readers, __NK_read_cb, nk);
-
     DC_task_queue_init (&nk->incoming_tasks, cfg->incoming_queue_size, cfg->num_processors, __NK_process_cb, nk);
 
-    //DC_task_queue_init (&nk->outgoing_tasks, cfg->outgoing_queue_size, 1, __NK_write_cb, nk);
+    DC_task_queue_init (&nk->outgoing_tasks, cfg->outgoing_queue_size, 1, __NK_write_cb, nk);
 
-/*
-    if (DC_task_queue_init (&nk->task_queue, cfg->queue_size, cfg->num_process_threads, __NK_process_cb, nk) < 0) {
-        return -1;
-    }
-*/
     if (DC_list_init (&nk->peer_set, NULL, NULL, NULL) != ERR_OK) {
         return -1;
     }

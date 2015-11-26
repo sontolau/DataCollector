@@ -173,6 +173,7 @@ int NK_commit_bulk_buffers (NetKit *nk, NKBuffer **buf, int num)
 }
 
 static DC_object_t *NK_malloc (const char *cls,
+                               unsigned int szcls,
                                void *data)
 {
     NetKit *nk = data;
@@ -213,7 +214,7 @@ static DC_object_t *NK_malloc (const char *cls,
             nkbuf->length = 0;
             memset (nkbuf->buffer, '\0', nkbuf->size);
         }
-        Dlog ("%p", nkbuf);
+        Dlog ("Alloc: %p", nkbuf);
         DC_locker_unlock (&nk->locker);
         return (DC_object_t*)nkbuf;
     }
@@ -247,7 +248,7 @@ void NK_buffer_release (NKBuffer *buf)
     }
 }
 
-static void NK_release (DC_object_t *obj, void *data)
+static void NK_free (const char *cls, DC_object_t *obj, void *data)
 {
     NetKit *nk = data;
 
@@ -260,6 +261,7 @@ static void NK_release (DC_object_t *obj, void *data)
             free (obj);
         }
     } else if (DC_object_is_kind_of (obj, "NKBuffer")) {
+        Dlog ("Release: %p.", obj);
         NK_buffer_release ((NKBuffer*)obj);
         if (nk->config->max_sockbufs) {
             DC_locker_lock (&nk->locker, 0, 1);
@@ -287,7 +289,8 @@ NKPeer *NK_alloc_peer_with_init (NetKit *nk)
                                     "NKPeer",
                                     nk,
                                     NK_malloc,
-                                    NK_release);
+                                    NK_free,
+                                    NULL);
     if (peer && NK_peer_init (peer)) {
         DC_object_release ((DC_object_t*)peer);
         return NULL;
@@ -302,7 +305,8 @@ NKBuffer *NK_alloc_buffer_with_init (NetKit *nk)
                                     "NKBuffer",
                                     nk,
                                     NK_malloc,
-                                    NK_release);
+                                    NK_free,
+                                    NULL);
     if (buf && NK_buffer_init (buf)) {
         DC_object_release ((DC_object_t*)buf);
         return NULL;

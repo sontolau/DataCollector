@@ -9,16 +9,25 @@ typedef struct _DC_object {
     char class_name[SZ_CLASS_NAME+1];
     void *data;
    
-    struct _DC_object* (*PRI (alloc)) (const char*, void*);
+    struct _DC_object* (*PRI (alloc)) (const char*, unsigned int, void*);
+    void (*PRI (free)) (const char*, struct _DC_object *obj, void*);
     void (*PRI (release)) (struct _DC_object*, void*);
 } DC_object_t;
 
 extern DC_object_t *DC_object_alloc (long size,
-                                     const char *cls,
-                                     void *data,
-                                     DC_object_t* (*__alloc) (const char *cls, void*),
-                                     void (*__release)(DC_object_t*, void*));
-#define DC_object_new(__class, __data) (__class*)DC_object_alloc(sizeof (__class), #__class, __data, NULL, __class##_release)
+                              const char *cls,
+                              void *data,
+                              DC_object_t* (*__alloc) (const char*, unsigned int, void*),
+                              void (*__free) (const char*, DC_object_t*, void*),
+                              void (*__release)(DC_object_t*, void*));
+
+#define DC_object_new(__class, __data) \
+       (__class*)DC_object_alloc(sizeof (__class), \
+                                 #__class, \
+                                 __data, \
+                                 NULL, \
+                                 NULL, \
+                                 __class##_release)
 
 extern int DC_object_init (DC_object_t *obj);
 
