@@ -41,8 +41,6 @@ int NK_sync (NetKit *nk)
         .ev = 0
     };
     return sizeof (pev);
-    //printf ("Write ....\n");
-    //return (write (nk->pfds[1], &pev, sizeof (pev)) == sizeof (pev))?0:1;
 }
 
 static void __update_peer (NetKit *nk, NKPeer *peer)
@@ -77,7 +75,7 @@ static void __do_read(NetKit *nk, NKPeer *peer)
     NKBuffer *nkbuf = NULL;
 
     if (!(nkbuf = NK_alloc_buffer_with_init(nk))) {
-	return;
+	    return;
     }
     nkbuf->iobuf.data = nkbuf->buffer;
     nkbuf->iobuf.size = nkbuf->size;
@@ -91,13 +89,16 @@ static void __do_read(NetKit *nk, NKPeer *peer)
 	    nk->__rd_bytes += nkbuf->length;
         if (nk->delegate && nk->delegate->didSuccessToReceiveData) {
             if (nk->delegate->didSuccessToReceiveData (nk, peer, nkbuf)) {
+                assert (peer != NULL);
                 NK_buffer_set_peer (nkbuf, peer);
-		        if (DC_task_queue_run_task (&nk->incoming_tasks, nkbuf, 1) != ERR_OK) {
-       	            Wlog ("[NetKit] the incoming queue is full.");
-                } else {
-	                NK_buffer_get (nkbuf);
-	            }
+                NK_buffer_get (nkbuf);
                 __update_peer (nk, peer);
+		        if (DC_task_queue_run_task (&nk->incoming_tasks, 
+                                            nkbuf, 
+                                            1) != ERR_OK) {
+       	            Wlog ("[NetKit] the incoming queue is full.");
+	                NK_release_buffer (nkbuf);
+                }
             }
         }
     }
@@ -109,9 +110,10 @@ static void __do_process(NetKit *nk, NKPeer *peer, NKBuffer *nkbuf)
 {
     nk->__proc_bytes += nkbuf->length;
     if (nk->delegate && nk->delegate->processData) {
-	nk->delegate->processData(nk, peer, nkbuf);
+	    nk->delegate->processData(nk, peer, nkbuf);
     }
-    NK_release_buffer(nkbuf);
+
+    printf ("%p, refcount: %d\n", nkbuf, nkbuf->super.refcount);
 }
 
 static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf) 
@@ -130,12 +132,6 @@ static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf)
             nk->delegate->didSuccessToSendData (nk, peer, nkbuf);
         }
     }
-/*
-    ok = (nkbuf->length == nkbuf->iobuf.size?1:0);
-    if (nk->delegate && nk->delegate->didReceiveEvent) {
-        nk->delegate->didReceiveEvent (nk, peer, NK_EV_WRITE, ok, nkbuf);
-    }
-*/
 }
 
 DC_INLINE void __NK_write_cb (void *user, void *data)
@@ -149,6 +145,7 @@ DC_INLINE void __NK_write_cb (void *user, void *data)
     NK_sync (user);
 }
 
+/*
 DC_INLINE void __NK_read_cb (void *userdata, void *data)
 {
     NKPeer *peer = (NKPeer*)data;
@@ -161,6 +158,7 @@ DC_INLINE void __NK_read_cb (void *userdata, void *data)
     }
     NK_sync (nk);
 }
+*/
 
 DC_INLINE void __NK_process_cb (void *userdata, void *data)
 {
@@ -170,7 +168,11 @@ DC_INLINE void __NK_process_cb (void *userdata, void *data)
 
     nkbuf = (NKBuffer*)data;
     peer    = nkbuf->peer;
+    DC_locker_lock (&peer->lock, 0 ,1);
     __do_process (nk, peer, nkbuf);
+    NK_buffer_remove_peer (nkbuf);
+    NK_release_buffer (nkbuf);
+    DC_locker_unlock (&peer->lock);
     NK_sync (nk);
 }
 
@@ -286,7 +288,7 @@ void NK_print_usage (const NetKit *nk)
         Dlog ("Write: %u(bytes), %f(ms)", nk->__wr_bytes, write_rate);
         Dlog ("Process: %u(bytes), %f(ms)", nk->__proc_bytes, proc_rate);
 	    Dlog ("\n");
-	    Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
+	    //Dlog ("Packets In Writing: %u", DC_queue_get_length (&nk->outgoing_tasks.queue));
 	    Dlog ("Packets In Processing: %u", DC_queue_get_length (&nk->incoming_tasks.queue));
 	    Dlog ("\n");
     }
@@ -350,7 +352,7 @@ int NK_init (NetKit *nk, const NKConfig *cfg)
 
     DC_task_queue_init (&nk->incoming_tasks, cfg->incoming_queue_size, cfg->num_processors, __NK_process_cb, nk);
 
-    DC_task_queue_init (&nk->outgoing_tasks, cfg->outgoing_queue_size, 1, __NK_write_cb, nk);
+    //DC_task_queue_init (&nk->outgoing_tasks, cfg->outgoing_queue_size, 1, __NK_write_cb, nk);
 
 /*
     if (DC_task_queue_init (&nk->task_queue, cfg->queue_size, cfg->num_process_threads, __NK_process_cb, nk) < 0) {

@@ -120,7 +120,8 @@ int DC_task_manager_init (DC_task_manager_t *manager,
 
     manager->max_tasks   = maxtasks;
     if ((ret = DC_queue_init (&manager->PRI (task_queue), 
-                              maxtasks)) != ERR_OK) {
+                              maxtasks,
+                              0)) != ERR_OK) {
         return ret;
     }
 
@@ -167,7 +168,10 @@ int DC_task_manager_run_task (DC_task_manager_t *manager,
     DC_task_t   *task    = NULL;
 
     do {
-	DC_locker_lock (&manager->PRI (qlock), 0, wait);
+	    if (DC_locker_lock (&manager->PRI (qlock), 0, wait) != ERR_OK) {
+            return ERR_BUSY;
+        }
+
         if (DC_queue_is_empty (&manager->PRI (task_queue))) {
             if (wait) {
                 DC_locker_wait (&manager->PRI (qlock), 1, 0);
@@ -179,14 +183,14 @@ int DC_task_manager_run_task (DC_task_manager_t *manager,
 
 
         if ((task = (DC_task_t*)(DC_task_t*)DC_queue_fetch 
-            (&manager->PRI (task_queue))) != (DC_task_t*)QZERO) {
+            (&manager->PRI (task_queue)))) {
             task->PRI (task) = task_core;
             task->PRI (task_data) = userdata;
             DC_thread_run (&task->PRI (task_thread), __task_core, task);
         }
 
         DC_locker_unlock (&manager->PRI (qlock));
-    } while ((obj_t)task == QZERO);
+    } while (task);
 
     return ERR_OK;
 }
@@ -197,7 +201,7 @@ void DC_task_manager_destroy (DC_task_manager_t *manager)
     DC_task_t *task;
 
     if (manager) {
-        while ((task = (DC_task_t*)DC_queue_fetch (&manager->PRI (task_queue))) != (DC_task_t*)QZERO) {
+        while ((task = (DC_task_t*)DC_queue_fetch (&manager->PRI (task_queue)))) {
             DC_thread_destroy (&task->PRI (task_thread));
         }
 
@@ -216,8 +220,7 @@ DC_INLINE void __do_task (void *data)
     //Dlog ("[task] task %u is running.", pthread_self ());
     do {
         DC_locker_lock (&qtask->locker, 0, 1);
-        if (DC_queue_get_length (&qtask->queue) > 0) {
-            objdata = DC_queue_fetch (&qtask->queue);
+        if ((objdata = DC_queue_fetch (&qtask->queue))) {
             DC_locker_unlock (&qtask->locker);
             qtask->task_func (qtask->data, (void*)objdata);
         } else {
@@ -242,6 +245,7 @@ DC_INLINE void __master_cb (void *data)
                 break;
                 //ret = DC_locker_wait (&qtask->locker, 1, 0);
             } else {
+                Dlog ("process queue....");
                 ret = ERR_OK;
             }
 
@@ -251,7 +255,6 @@ DC_INLINE void __master_cb (void *data)
             }
         //} while (1);
         
-
         DC_task_manager_run_task (&qtask->task_manager,
                                   __do_task,
                                   qtask,
@@ -271,14 +274,14 @@ int DC_task_queue_init (DC_task_queue_t *qtask,
         return -1;
     }
 
-    if (DC_thread_init (&qtask->master_thread, 1) != ERR_OK) {
+    if (DC_thread_init (&qtask->master_thread, 500) != ERR_OK) {
 L0:
         DC_locker_destroy (&qtask->locker);
         return -1;
     } else {
     }
 
-    if (DC_queue_init (&qtask->queue, size) < 0) {
+    if (DC_queue_init (&qtask->queue, size, 0) < 0) {
 L1:
         DC_thread_destroy (&qtask->master_thread);
         goto L0;
@@ -292,33 +295,30 @@ L1:
     qtask->data = userdata;
     qtask->task_func = task_func;
 
-    DC_thread_run (&qtask->master_thread, __master_cb, qtask);
+    //DC_thread_run (&qtask->master_thread, __master_cb, qtask);
 
     return 0;
 }
 
 
-int DC_task_queue_run_task (DC_task_queue_t *qtask, void *object, int wait)
+int DC_task_queue_run_task (DC_task_queue_t *qtask, 
+                            void *object, 
+                            int wait)
 {
     int ret = ERR_OK;
 
     if (object) {
-        if (DC_locker_lock (&qtask->locker, 0, 1) != ERR_OK) {
+        if (DC_locker_lock (&qtask->locker, 0, wait) != ERR_OK) {
             return ERR_BUSY;
         }
-        DC_locker_notify (&qtask->locker, 1);
-	if (!DC_queue_is_full (&qtask->queue)) {
-            
+	    if (!DC_queue_is_full (&qtask->queue)) {
             DC_queue_add (&qtask->queue, (obj_t)object, 1);
-            DC_locker_notify (&qtask->locker, 1);
-/*
-    	    DC_thread_run (&qtask->master_thread, 
-                           __master_cb, 
-                           qtask);
-*/
         } else {
             ret = ERR_FULL;
         }
+        DC_thread_run (&qtask->master_thread,
+                       __master_cb,
+                       qtask);
         DC_locker_unlock (&qtask->locker);
     }
     return ret;

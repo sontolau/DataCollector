@@ -1,35 +1,35 @@
 #include "libdc.h"
 #include "thread.h"
-static int i = 0;
-static int y = 0;
 
-void task_func (void *d1)
+
+DC_task_manager_t manager;
+void __task (void *data)
 {
-    printf ("Counter: %d\n", ++i);
-    //usleep (1);
+    printf ("Thread %u is running.\n", pthread_self ());
 }
 
-#define HELLO "hello\n"
-
-DC_task_queue_t task_queue;
-void main ()
+void func(void*data)
 {
-   DC_thread_t thread;
-
-   DC_thread_init (&thread);
-   while (1) {
-       DC_thread_run (&thread, task_func, NULL);
-   }
-#if 0
-    #endif
-    
-    if (DC_task_queue_init (&task_queue, 100, 1, task_func, NULL)) {
-        printf ("Can not init task queue.\n");
-        exit (1);
-    }
-
     while (1) {
-       DC_task_queue_run_task (&task_queue, HELLO, 1);
+        DC_task_manager_run_task (&manager, __task, NULL, 1);
+    }
+}
+
+
+int main ()
+{
+
+    DC_thread_t threads[5];
+
+    int i;
+
+    DC_task_manager_init (&manager, 10);
+
+    for (i=0; i<5; i++) {
+       DC_thread_init (&threads[i], 0);
+       DC_thread_run (&threads[i], func, NULL);
     }
 
+    sleep (10000);
+    return 0;
 }

@@ -33,6 +33,7 @@ void accept_func (NetKit *nk, NKPeer *p1, NKPeer *p2)
 
 void proc_func (NetKit *nk, NKPeer *peer, NKBuffer *buf)
 {
+/*
     buf->buffer[buf->length] = '\0';
     NKBuffer *wbuf = NULL;
     processed_count++;
@@ -41,6 +42,7 @@ void proc_func (NetKit *nk, NKPeer *peer, NKBuffer *buf)
     sprintf ((char*)wbuf->buffer, "%s", buf->buffer);
     wbuf->length = strlen (wbuf->buffer);
     NK_commit_buffer (nk, wbuf);
+*/
 }
 
 

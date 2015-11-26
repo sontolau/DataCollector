@@ -20,12 +20,6 @@ DC_object_t *DC_object_alloc (long size,
         strncpy(obj->class_name, cls, sizeof(obj->class_name) - 1);
         obj->PRI (release) = __release;
         obj->PRI (alloc)   = __alloc;
-/*
-        if (__init && __init (obj, data) < 0) {
-            obj->PRI (release) (obj, data);
-            return NULL;
-        }
-*/
     }
 	return obj;
 }

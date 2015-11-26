@@ -15,7 +15,7 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
         return ERR_FAILURE;
     }
 
-    if (DC_queue_init (&pool->PRI (buf_queue), num) != ERR_OK) {
+    if (DC_queue_init (&pool->PRI (buf_queue), num, 0) != ERR_OK) {
         return ERR_FAILURE;
     }
 

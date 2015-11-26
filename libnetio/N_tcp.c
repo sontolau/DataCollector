@@ -73,7 +73,6 @@ static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
     getpeername (newio->fd,
                  (struct sockaddr*)&newio->inet_addr.addr,
                  &newio->inet_addr.addrlen);
-    printf ("remote: %u\n", newio->inet_addr.addr.s4.sin_addr.s_addr);
     newio->inet_addr.addr_info = io->inet_addr.addr_info;
     if (newio->fd < 0) {
 err_quit:

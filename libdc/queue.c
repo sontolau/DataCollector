@@ -14,7 +14,7 @@ DC_INLINE obj_t *__recalc_address (DC_queue_t *queue, obj_t *ptr)
                                          queue->size));
 }
 
-int DC_queue_init (DC_queue_t *queue, unsigned int size)
+int DC_queue_init (DC_queue_t *queue, unsigned int size, obj_t zero)
 {
     int i = 0;
 
@@ -23,9 +23,10 @@ int DC_queue_init (DC_queue_t *queue, unsigned int size)
         return ERR_FAILURE;
     }
 
+    queue->zero_value = zero;
     queue->size       = size;
     for (i=0; i<size; i++) {
-        queue->PRI (buffer)[i] = QZERO;
+        queue->PRI (buffer)[i] = zero;
     }
 
     queue->PRI (tail_ptr) = queue->PRI (head_ptr) = queue->PRI (buffer);
@@ -36,14 +37,14 @@ int DC_queue_init (DC_queue_t *queue, unsigned int size)
 int DC_queue_is_empty (const DC_queue_t *queue)
 {
     return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr== QZERO;
+           *queue->__head_ptr== queue->zero_value;
 }
 
 
 int DC_queue_is_full (const DC_queue_t *queue)
 {
     return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr != QZERO;
+           *queue->__head_ptr != queue->zero_value;
 }
 
 
@@ -53,7 +54,7 @@ int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
         return ERR_FULL;
     }
 
-    *queue->PRI (head_ptr) = obj;
+    (*queue->PRI (head_ptr)) = obj;
     queue->PRI (head_ptr)  = __recalc_address (queue, queue->PRI (head_ptr));
     return ERR_OK;
 }
@@ -75,18 +76,18 @@ obj_t DC_queue_fetch (DC_queue_t *queue)
     obj_t obj;
 
     if (DC_queue_is_empty (queue)) {
-        return QZERO;
+        return queue->zero_value;
     }
 
     obj = *queue->PRI (tail_ptr);
-    *queue->PRI (tail_ptr) = QZERO;
+    (*queue->PRI (tail_ptr)) = queue->zero_value;
     queue->PRI (tail_ptr)  = __recalc_address (queue, queue->PRI (tail_ptr));
     return obj;
 }
 
 void DC_queue_clear (DC_queue_t *queue)
 {    
-    while (DC_queue_fetch (queue) != QZERO);
+    while (DC_queue_fetch (queue) != queue->zero_value);
 }
 
 void DC_queue_destroy (DC_queue_t *queue)
