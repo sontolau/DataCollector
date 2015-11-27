@@ -240,7 +240,7 @@ DC_INLINE void __master_cb (void *data)
     int ret;
 
     do {
-        Dlog ("%u thread process queue.", pthread_self ());
+        //Dlog ("%u thread process queue.", pthread_self ());
         DC_locker_lock (&qtask->locker, 0, 1);
         if (DC_queue_is_empty (&qtask->queue)) {
             DC_locker_unlock (&qtask->locker);
