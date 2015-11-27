@@ -132,6 +132,7 @@ void DC_hash_remove_object (DC_hash_t *hash, DC_key_t key) {
     elem = __find_hash_elem (hash, key);
 
     if (elem) {
+        hash->num_objects--;
         DC_list_remove_object (list, &elem->PRI (hash_list));
         DC_list_remove_object (&hash->PRI (array_nodes), &elem->PRI (array_list));
     }
