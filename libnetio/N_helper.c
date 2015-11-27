@@ -146,7 +146,7 @@ void NK_buffer_remove_peer (NKBuffer *buf)
 int NK_commit_buffer (NetKit *nk, NKBuffer *buf)
 {
     int ret = ERR_OK;
-
+    
     NK_buffer_get (buf);
     if ((ret = DC_task_queue_run_task (&nk->outgoing_tasks, 
                                          (void*)buf, 1))) {
@@ -225,6 +225,7 @@ static DC_object_t *NK_malloc (const char *cls,
 int NK_peer_init (NKPeer *peer)
 {
     DC_locker_init (&peer->lock, 0, NULL);
+    //DC_list_init (&peer->buf_list, NULL, NULL);
     return 0;
 }
 

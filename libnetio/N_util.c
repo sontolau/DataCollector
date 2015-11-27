@@ -19,7 +19,7 @@ DC_INLINE long __send (int sock, const unsigned char *buf, unsigned int size)
     long szwrite;
 
     while (1) {
-        szwrite = send (sock, buf, size, 0);
+        szwrite = send (sock, buf, size, MSG_NOSIGNAL);
         if (szwrite < 0 && errno == EINTR) {
             continue;
         } else {

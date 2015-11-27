@@ -412,7 +412,7 @@ int NK_run (NetKit *nk)
 void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
 {
     DC_locker_lock (&nk->locker, 0, 1);
-
+   
     if (ev == NK_EV_ACCEPT) {
         ev_io_init(&peer->ev_io, __NK_accept_callback, peer->io.fd, EV_READ);
     } else if (ev == NK_EV_READ) {
@@ -422,14 +422,6 @@ void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
     } else if (ev == NK_EV_RDWR) {
     }
 
-/*
-    //peer->ev = ev;
-    if (peer->server) {
-        ev_io_init (&peer->ev_io, __NK_accept_callback, peer->io.fd, EV_READ);
-    } else {
-        ev_io_init (&peer->ev_io, __NK_read_callback, peer->io.fd, EV_READ);
-    }
-*/
     DC_list_add_object (&nk->peer_set, &peer->peer_list);
     peer->ev_io.data = peer;
     peer->last_update = nk->counter;

@@ -18,6 +18,7 @@ typedef struct _NKBuffer {
     int  tag;
     long size;
     long length;
+    //DC_list_elem_t __list;
     unsigned char buffer[0];
 } NKBuffer;
 
@@ -47,6 +48,7 @@ typedef struct _NKPeer {
     unsigned int last_update;
     DC_locker_t lock;
     DC_list_elem_t peer_list;
+    //DC_list_t   buf_list;
     union {
         int int_value;
         void *pointer_value;
