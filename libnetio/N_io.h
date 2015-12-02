@@ -2,6 +2,9 @@
 #define _NETIO_IO_H
 
 #include <libdc/libdc.h>
+#include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
 #include <gnutls/gnutls.h>
 
 enum {

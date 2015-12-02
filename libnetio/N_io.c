@@ -1,4 +1,5 @@
 #include "N_io.h"
+#include <fcntl.h>
 #include "N_util.c"
 #include "N_tcp.c"
 #include "N_udp.c"
@@ -68,7 +69,7 @@ void INetAddressFrom (INetAddress_t *addr, const NetAddrInfo_t *info)
     addr->addr_info = (NetAddrInfo_t*)info;
     if (info->port == 0) {
         addr->addr.su.sun_family = AF_UNIX;
-        strncpy (addr->addr.su.sun_path, info->address, UNIX_PATH_MAX);
+        strncpy (addr->addr.su.sun_path, info->address, sizeof (addr->addr.su.sun_path));
         addr->addrlen = sizeof (addr->addr.su);
     } else {
         if (info->flag & NET_F_IPv6) {

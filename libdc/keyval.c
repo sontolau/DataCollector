@@ -14,38 +14,37 @@ static DC_keyval_t *keyval_from_array (json_object *object)
     }
 
     kvs = calloc (length+1, sizeof (DC_keyval_t));
-    //DC_keyval_alloc (kvs, length);
-    if (kvs == NULL) return NULL;
 
-    for (i=0; i < length; i++) {
+    for (i=0; kvs && i < length; i++) {
         obj = json_object_array_get_idx (object, i);
         switch (json_object_get_type (obj)) {
             case json_type_int: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_INT, json_object_get_int (obj));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_INT, json_object_get_int (obj));
             } break;
             case json_type_string: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_STRING, strdup (json_object_get_string (obj)));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_STRING, json_object_get_string (obj));
             } break;
             case json_type_object: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_KEYVAL, keyval_from_json (obj));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_KEYVAL, keyval_from_json (obj));
             } break;
             case json_type_array: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_ARRAY, keyval_from_array (obj));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_ARRAY, keyval_from_array (obj));
             } break;
             case json_type_double: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_DOUBLE, json_object_get_double (obj));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_DOUBLE, json_object_get_double (obj));
             } break;
             case json_type_boolean: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_BOOL, json_object_get_boolean (obj));
+                DC_keyval_set (&kvs[i], "", KV_TYPE_BOOL, json_object_get_boolean (obj));
             } break;
             case json_type_null: {
-                DC_keyval_set (kvs[i], "", KV_TYPE_ID, 0);
+            	DC_keyval_set (&kvs[i], "", KV_TYPE_KEYVAL, NULL);
             } break;
             default: {
-                break;
-            }
+                DC_keyval_set (&kvs[i], "", KV_TYPE_ID, 0);
+            } break;
         }
     }
+    DC_keyval_set_zero (&kvs[i]);
 
     return kvs;
 }
@@ -61,45 +60,46 @@ DC_keyval_t *keyval_from_json (json_object *object)
     }
 
     kvs = calloc (length+1, sizeof (DC_keyval_t));
-    //DC_keyval_alloc (kvs, length);
-    if (kvs == NULL) return NULL;
 
     json_object_object_foreach (object, jkey, jvalue) {
-        if (i < length && jkey && jvalue) {
+        if (i < length && kvs && jkey && jvalue) {
             switch (json_object_get_type (jvalue)) {
                 case json_type_int: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_INT, json_object_get_int (jvalue));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_INT, json_object_get_int (jvalue));
                 }
                     break;
                 case json_type_string: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_STRING, strdup (json_object_get_string (jvalue)));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_STRING, json_object_get_string (jvalue));
                 }
                     break;
                 case json_type_object: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_KEYVAL, keyval_from_json (jvalue));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, keyval_from_json (jvalue));
                 }
                     break;
                 case json_type_array: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_ARRAY, keyval_from_array (jvalue));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_ARRAY, keyval_from_array (jvalue));
                 }
                     break;
                 case json_type_double: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_DOUBLE, json_object_get_double (jvalue));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_DOUBLE, json_object_get_double (jvalue));
                 } break;
                 case json_type_boolean: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_BOOL, json_object_get_boolean (jvalue));
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_BOOL, json_object_get_boolean (jvalue));
                 } break;
                 case json_type_null: {
-                    DC_keyval_set (kvs[i], jkey, KV_TYPE_KEYVAL, NULL);
+                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, NULL);
                 } break;
-                default:
-                    break;
+                default: {
+                	DC_keyval_set (&kvs[i], jkey, KV_TYPE_ID, 0);
+                }
+                break;
             }
         } else {
             break;
         }
         i++;
     }
+    DC_keyval_set_zero (&kvs[i]);
     return kvs;
 }
 
@@ -180,9 +180,8 @@ void DC_keyval_setp (DC_keyval_t *_kv,
                      unsigned long long _val)
 {
     memset (_kv, '\0', sizeof (DC_keyval_t));
-    strncpy (_kv->key, _key, MAX_KEY_LEN);
     _kv->type = _type;
-    
+    _kv->key  = (char*)_key;
     switch (_type) {
         case KV_TYPE_BOOL:
             _kv->bool_value = (unsigned char)_val;
@@ -216,7 +215,7 @@ void DC_keyval_setp (DC_keyval_t *_kv,
     }
 }
 
-DC_keyval_t *DC_keyval_array_from_json_string (const char *jsonstr)
+DC_keyval_t *DC_keyval_array_from_json (const char *jsonstr)
 {
     json_object *root = NULL;
 
@@ -228,7 +227,7 @@ DC_keyval_t *DC_keyval_array_from_json_string (const char *jsonstr)
     return keyval_from_json (root);
 }
 
-const char *DC_keyval_array_to_json_string (const DC_keyval_t *kv)
+const char *DC_keyval_array_to_json (const DC_keyval_t *kv)
 {
     json_object *json = keyval_to_json (kv);
 
@@ -264,55 +263,55 @@ int DC_keyval_array_length (const DC_keyval_t *kvrry)
  
     return len;   
 }
+//
+//void DC_keyval_array_copy (DC_keyval_t *dest, const DC_keyval_t *src)
+//{
+//    register DC_keyval_t *srcptr, *dstptr;
+//
+//    if (!(src && dest)) return;
+//
+//    srcptr = (DC_keyval_t*)src;
+//    dstptr = dest;
+//
+//    while (!(srcptr->type == KV_TYPE_NO || dstptr->type == KV_TYPE_NO)) {
+//        memcpy (dstptr, srcptr, sizeof (DC_keyval_t));
+//        srcptr++;
+//        dstptr++;
+//    }
+//}
+//
+//DC_keyval_t *DC_keyval_array_clone (const DC_keyval_t *src)
+//{
+//    int len = 0;
+//    DC_keyval_t *dst = NULL;
+//    int i = 0;
+//
+//    if (src == NULL) return NULL;
+//
+//    len = DC_keyval_array_length (src);
+//    dst = calloc (len + 1, sizeof (DC_keyval_t));
+//    //DC_keyval_alloc (dst, len);
+//    if (dst) {
+//        for (i=0; i < len; i++) {
+//            switch (src[i].type) {
+//                case KV_TYPE_STRING:
+//                    DC_keyval_set (dst[i], src[i].key, src[i].type, src[i].string_value);
+//                    break;
+//                case KV_TYPE_KEYVAL:
+//                case KV_TYPE_ARRAY:
+//                    DC_keyval_set (dst[i], src[i].key, src[i].type, DC_keyval_array_clone (src[i].keyval_value));
+//                    break;
+//                default:
+//                    memcpy (&dst[i], &src[i], sizeof (DC_keyval_t));
+//                    break;
+//            }
+//        }
+//    }
+//
+//    return dst;
+//}
 
-void DC_keyval_array_copy (DC_keyval_t *dest, const DC_keyval_t *src)
-{
-    register DC_keyval_t *srcptr, *dstptr;
-
-    if (!(src && dest)) return;
-
-    srcptr = (DC_keyval_t*)src;
-    dstptr = dest;
-
-    while (!(srcptr->type == KV_TYPE_NO || dstptr->type == KV_TYPE_NO)) {
-        memcpy (dstptr, srcptr, sizeof (DC_keyval_t));
-        srcptr++;
-        dstptr++;
-    }
-}
-
-DC_keyval_t *DC_keyval_array_clone (const DC_keyval_t *src)
-{
-    int len = 0;
-    DC_keyval_t *dst = NULL;
-    int i = 0;
-
-    if (src == NULL) return NULL;
-
-    len = DC_keyval_array_length (src);
-    dst = calloc (len + 1, sizeof (DC_keyval_t));
-    //DC_keyval_alloc (dst, len);
-    if (dst) {
-        for (i=0; i < len; i++) {
-            switch (src[i].type) {
-                case KV_TYPE_STRING:
-                    DC_keyval_set (dst[i], src[i].key, src[i].type, strdup(src[i].string_value));
-                    break;
-                case KV_TYPE_KEYVAL:
-                case KV_TYPE_ARRAY:
-                    DC_keyval_set (dst[i], src[i].key, src[i].type, DC_keyval_array_clone (src[i].keyval_value));
-                    break;
-                default:
-                    memcpy (&dst[i], &src[i], sizeof (DC_keyval_t));
-                    break;
-            }
-        }
-    }
-
-    return dst;
-}
-
-void DC_keyval_free_array (DC_keyval_t *kv)
+void DC_keyval_array_free_json (DC_keyval_t *kv)
 //void DC_keyval_free_zone (DC_keyval_t *kv)
 {
     register DC_keyval_t *ptr;
@@ -322,11 +321,10 @@ void DC_keyval_free_array (DC_keyval_t *kv)
     DC_keyval_array_foreach (ptr, kv) {
         switch (ptr->type) {
             case KV_TYPE_STRING:
-                free (ptr->string_value);
                 break;
             case KV_TYPE_ARRAY:
             case KV_TYPE_KEYVAL:
-                DC_keyval_free_array (ptr->keyval_value);
+            	DC_keyval_array_free_json (ptr->keyval_value);
                 free (ptr->keyval_value);
                 break;
             default:
@@ -334,7 +332,7 @@ void DC_keyval_free_array (DC_keyval_t *kv)
         }
     }
 }
-DC_keyval_t *DC_keyval_find (const DC_keyval_t *kvset, const char *key)
+DC_keyval_t *DC_keyval_array_find (const DC_keyval_t *kvset, const char *key)
 {
     DC_keyval_t *ptr = NULL;
     DC_keyval_array_foreach (ptr, kvset) {
@@ -350,7 +348,7 @@ DC_keyval_t *DC_keyval_array_find_path (const DC_keyval_t *kvset, const char *pa
 {
     DC_keyval_t *ptr = NULL;
 
-    ptr = DC_keyval_find (kvset, path[0]);
+    ptr = DC_keyval_array_find (kvset, path[0]);
     if (ptr) {
         if (ptr->type == KV_TYPE_KEYVAL && path[1]) {
             return DC_keyval_array_find_path (ptr->keyval_value, &path[1]);
