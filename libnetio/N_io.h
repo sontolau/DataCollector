@@ -5,7 +5,10 @@
 #include <sys/un.h>
 #include <netinet/in.h>
 #include <arpa/inet.h>
+
+#ifdef ENABLE_GNUTLS
 #include <gnutls/gnutls.h>
+#endif
 
 enum {
     NET_TCP = 0,
@@ -54,9 +57,11 @@ extern void INetAddressFrom (INetAddress_t *addr, const NetAddrInfo_t *info);
 typedef struct _NetIO {
     int          fd;
     struct {
+#ifdef ENABLE_GNUTLS
         gnutls_certificate_credentials_t x509_cred;
         gnutls_priority_t  priority_cache;
         gnutls_session_t   session;
+#endif
     } ssl;
     
     INetAddress_t inet_addr;

@@ -1,7 +1,9 @@
+#ifdef ENABLE_GNUTLS
 static int __verify_callback (gnutls_session_t session)
 {
     return 1;
 }
+
 
 static int __x509_init (NetIO_t *io, int server)
 {
@@ -47,11 +49,12 @@ static void __x509_destroy (NetIO_t *io)
         gnutls_priority_deinit (io->ssl.priority_cache);
     }
 }
+#endif
 
 static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
 {
     int ret;
-
+#ifdef ENABLE_GNUTLS
     if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         gnutls_init (&newio->ssl.session, GNUTLS_SERVER);
         gnutls_priority_set (newio->ssl.session, io->ssl.priority_cache);
@@ -64,6 +67,7 @@ static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
                                                GNUTLS_CERT_IGNORE);
         }
     }
+#endif
 
     newio->inet_addr.addrlen = sizeof (newio->inet_addr.addr);
     newio->fd = accept (io->fd, 
@@ -76,13 +80,15 @@ static int __tcp_accept (const NetIO_t *io, NetIO_t *newio)
     newio->inet_addr.addr_info = io->inet_addr.addr_info;
     if (newio->fd < 0) {
 err_quit:
+#ifdef ENABLE_GNUTLS
         if (io->inet_addr.addr_info->flag & NET_F_SSL) {
             gnutls_bye (newio->ssl.session, GNUTLS_SHUT_WR);
             gnutls_deinit (newio->ssl.session);
         }
+#endif
         return -1;
     }
-
+#ifdef ENABLE_GNUTLS
     if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         gnutls_transport_set_int (newio->ssl.session, newio->fd);
         do { ret = gnutls_handshake (newio->ssl.session);} 
@@ -92,6 +98,8 @@ err_quit:
             goto err_quit;
         }
     }
+#endif
+
     return 0;
 }
 
@@ -104,14 +112,14 @@ static int tcpOpenIO (NetIO_t *io, int serv)
     if (io->fd < 0) {
         return -1;
     }
-
+#ifdef ENABLE_GNUTLS
     if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         if (__x509_init (io, serv) < 0) {
             close (io->fd);
             return -1;
         }
     }
-
+#endif
     return 0;
 }
 
@@ -140,7 +148,7 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
                          sa->addrlen) < 0) {
                 return -1;
             }
-           
+#ifdef ENABLE_GNUTLS          
             if (addr_info->flag & NET_F_SSL) {
                 gnutls_init (&io->ssl.session, GNUTLS_CLIENT);
                 gnutls_set_default_priority (io->ssl.session);
@@ -155,6 +163,7 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
                     return -1;
                 }
             }
+#endif
 
             return 0;
         }
@@ -197,21 +206,25 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
                          (struct sockaddr*)&buf->inet_address.addr, 
                          &buf->inet_address.addrlen);
 */
+#ifdef ENABLE_GNUTLS
             if (addr_info->flag & NET_F_SSL) {
                 return (ret = gnutls_record_recv (io->ssl.session, 
                                                           buf->data, 
                                                           buf->size));
             }
+#endif
             return (ret = __recv (io->fd, buf->data, buf->size))?ret:-1;
         }
             break;
 
         case NET_IO_CTRL_WRITE: {
+#ifdef ENABLE_GNUTLS
             if (addr_info->flag & NET_F_SSL) {
                 return (ret = gnutls_record_send (io->ssl.session, 
                                                           buf->data, 
                                                           buf->size));
             }
+#endif
             return (ret = __send (io->fd, buf->data, buf->size))?ret:-1;
         }
             break;
@@ -226,10 +239,10 @@ static long tcpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 static void tcpCloseIO (NetIO_t *io)
 {
     NetAddrInfo_t *addr_info = io->inet_addr.addr_info;
-
+#ifdef ENABLE_GNUTLS
     if (addr_info->flag & NET_F_SSL) {
         __x509_destroy (io);
     }
-
+#endif
     close (io->fd);
 }

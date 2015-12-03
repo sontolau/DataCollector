@@ -64,7 +64,7 @@ static int __dtls_verify_cookie (SSL *ssl, unsigned char *cookie, unsigned int c
     return 0;
 }
 #endif
-
+#ifdef ENABLE_GNUTLS
 static int __dtls_x509_init (NetIO_t *io, int server)
 {
 #if 0
@@ -172,6 +172,7 @@ static int __dtls_accept (NetIO_t *io)
 
     return 0;    
 }
+#endif
 
 static int udpOpenIO (NetIO_t *io, int serv)
 {
@@ -182,14 +183,14 @@ static int udpOpenIO (NetIO_t *io, int serv)
     if (io->fd < 0) {
         return -1;
     }
-
+#ifdef ENABLE_GNUTLS
     if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         if (__dtls_x509_init (io, serv) < 0) {
             close (io->fd);
             return -1;
         }
     }
-
+#endif
     return 0;
 }
 
@@ -212,16 +213,16 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
             break;
         case NET_IO_CTRL_CONNECT:
         {
-            if (addr_info->flag & NET_F_SSL) {
-                if (connect (io->fd,
-                         (struct sockaddr*)&sa->addr,
+            if (connect (io->fd,
+                        (struct sockaddr*)&sa->addr,
                          sa->addrlen) < 0) {
-                    return -1;
-                }
-
+                return -1;
+            }
+#ifdef ENABLE_GNUTLS            
+            if (addr_info->flag & NET_F_SSL) {
                 return __dtls_connect (io);
             }
- 
+ #endif
             return 0;
         }
             break;
@@ -230,10 +231,12 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
             break;
             
         case NET_IO_CTRL_ACCEPT:
+#ifdef ENABLE_GNUTLS
             if (addr_info->flag & NET_F_SSL) {
                 __dtls_accept (io);
             }
-            return 0;
+#endif
+            return -1;
             break;
             
        case NET_IO_CTRL_SET_OPTS: {
@@ -265,12 +268,14 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
             break;
         case NET_IO_CTRL_READ: {
             buf->inet_address.addrlen = sizeof (buf->inet_address.addr);
+#ifdef ENABLE_GNUTLS
             if (addr_info->flag & NET_F_SSL) {
                 ;//return SSL_read (io->ssl.ssl, arg, len);
                 return gnutls_record_recv (io->ssl.session, 
                                            buf->data, 
                                            buf->size);
             }
+#endif
             return __recvfrom (io->fd,
                                buf->data,
                                buf->size,
@@ -279,11 +284,13 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
         }
             break;
         case NET_IO_CTRL_WRITE: {
+#ifdef ENABLE_GNUTLS
             if (addr_info->flag & NET_F_SSL) {
                return gnutls_record_send (io->ssl.session, 
                                           buf->data, 
                                           buf->size);
             }
+#endif
             return __sendto (io->fd,
                              buf->data,
                              buf->size,
@@ -301,9 +308,10 @@ static long udpCtrlIO (NetIO_t *io, int type, void *arg, long len)
 
 static void udpCloseIO (NetIO_t *io)
 {
+#ifdef ENABLE_GNUTLS
     if (io->inet_addr.addr_info->flag & NET_F_SSL) {
         __dtls_x509_destroy (io);
     }
-
+#endif
     close (io->fd);
 }

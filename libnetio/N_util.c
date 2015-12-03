@@ -150,7 +150,7 @@ DC_INLINE long __ssl_write (SSL *ssl, const unsigned char *buf, unsigned int szb
     return -1;
 }
 */
-
+#ifdef ENABLE_GNUTLS
 DC_INLINE gnutls_dh_params_t __generate_dh_params ()
 {
     gnutls_dh_params_t dparam = NULL;
@@ -198,6 +198,7 @@ __generate_x509_cred (const char *ca,
 
     return cred;
 }
+#endif
 
 
 DC_INLINE int __set_nonblock (int fd)
