@@ -64,6 +64,21 @@ extern void DC_hash_clear (DC_hash_t *hash);
 
 extern void DC_hash_destroy (DC_hash_t *hash);
 
+/*
+typedef unsigned long long DC_hash_kv_t;
+
+typedef struct _DC_hash_array {
+    DC_hash_kv_t key_type;
+    DC_hash_kv_t value_type;
+    DC_hash_t __table;
+} DC_hash_array_t;
+
+extern int DC_hash_array_init (DC_hash_array_t*, const char*);
+extern int DC_hash_array_put (DC_hash_array_t*, DC_hash_kv_t, DC_hash_kv_t);
+extern DC_hash_kv_t DC_hash_array_get (DC_hash_array_t*, DC_hash_kv_t);
+extern int DC_hash_array_has_key (DC_hash_array_t*, DC_hash_kv_t);
+extern void DC_hash_array_destroy (DC_hash_array_t*);
+*/
 DC_CPP (})
 
 #endif

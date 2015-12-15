@@ -1,4 +1,4 @@
-#include "N_netkit.h"
+
 
 /*
 static int NK_lock (NetKit *kit, int wait)
@@ -214,7 +214,7 @@ static DC_object_t *NK_malloc (const char *cls,
             nkbuf->length = 0;
             memset (nkbuf->buffer, '\0', nkbuf->size);
         }
-        Dlog ("Alloc: %p", nkbuf);
+        //Dlog ("Alloc: %p", nkbuf);
         DC_locker_unlock (&nk->locker);
         return (DC_object_t*)nkbuf;
     }
@@ -262,7 +262,7 @@ static void NK_free (const char *cls, DC_object_t *obj, void *data)
             free (obj);
         }
     } else if (DC_object_is_kind_of (obj, "NKBuffer")) {
-        Dlog ("Release: %p.", obj);
+        //Dlog ("Release: %p.", obj);
         NK_buffer_release ((NKBuffer*)obj);
         if (nk->config->max_sockbufs) {
             DC_locker_lock (&nk->locker, 0, 1);
