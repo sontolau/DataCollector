@@ -327,6 +327,10 @@ int NK_init (NetKit *nk, const NKConfig *cfg)
     nk->config = (NKConfig*)cfg;
     srandom (time (NULL));
 
+    if (cfg->daemon) {
+        daemon (1, 1);
+    }
+
     if (!(nk->ev_loop = ev_loop_new (0))) {
         return -1;
     }
@@ -388,10 +392,6 @@ int NK_run (NetKit *nk)
 {
     ev_timer timer;
     NKConfig       *cfg  = nk->config;
-
-    if (cfg->daemon) {
-        daemon (0, 0);
-    }
 
     if (cfg->chdir) chdir (cfg->chdir);
     if (cfg->pidfile) __NK_write_pid (cfg->pidfile, getpid ());
