@@ -46,6 +46,8 @@ typedef struct _NKPeer {
     NetAddrInfo_t addr;
     NetIO_t io;
     unsigned int last_update;
+    unsigned long total_bytes;
+    double        byte_rate;
     DC_locker_t lock;
     DC_list_elem_t peer_list;
     //DC_list_t   buf_list;

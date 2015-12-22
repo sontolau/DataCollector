@@ -137,8 +137,8 @@ void DC_locker_destroy (DC_locker_t*locker)
     if (locker->PRI (rwflag)) {
         pthread_rwlock_destroy (RWLOCK(locker->PRI (lock)));
     } else {
+    	pthread_cond_destroy (&locker->PRI (cond));
         pthread_mutex_destroy (PMUTEX(locker->PRI (lock)));
-        pthread_cond_destroy (&locker->PRI (cond));
     }
 
 #endif

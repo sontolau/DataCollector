@@ -262,7 +262,6 @@ static void NK_free (const char *cls, DC_object_t *obj, void *data)
             free (obj);
         }
     } else if (DC_object_is_kind_of (obj, "NKBuffer")) {
-        //Dlog ("Release: %p.", obj);
         NK_buffer_release ((NKBuffer*)obj);
         if (nk->config->max_sockbufs) {
             DC_locker_lock (&nk->locker, 0, 1);

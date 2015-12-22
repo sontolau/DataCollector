@@ -11,7 +11,6 @@ static NKConfig DefaultConfig = {
     .max_sockbuf_size = 0xFFFF,
     .max_peers = 0,
     .outgoing_queue_size = 500,
-    .incoming_queue_size = 500,
     .num_processors = 2,
     .debug = 1,
     .watch_dog = WATCH_DOG (1, 0),
@@ -87,6 +86,8 @@ static void __do_read(NetKit *nk, NKPeer *peer)
         }
     } else {
 	    nk->__rd_bytes += nkbuf->length;
+        peer->total_bytes += nkbuf->length;
+        
         if (nk->delegate && nk->delegate->didSuccessToReceiveData) {
             if (nk->delegate->didSuccessToReceiveData (nk, peer, nkbuf)) {
                 assert (peer != NULL);
@@ -435,6 +436,7 @@ void NK_remove_peer (NetKit *nk, NKPeer *peer)
     DC_locker_lock (&nk->locker, 0, 1);
     DC_list_remove_object (&nk->peer_set, &peer->peer_list);
     ev_io_stop (nk->ev_loop, &peer->ev_io);
+
     DC_locker_unlock (&nk->locker);
     NK_release_peer (peer);
 }
