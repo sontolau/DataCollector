@@ -128,7 +128,7 @@ NKPeer *NK_peer_get (NKPeer *peer)
 
 void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer)
 {
-    if (buf->peer != peer) {
+    if (buf->peer && buf->peer != peer) {
         NK_buffer_remove_peer (buf);
     }
 
@@ -150,7 +150,6 @@ int NK_commit_buffer (NetKit *nk, NKBuffer *buf)
     NK_buffer_get (buf);
     if ((ret = DC_task_queue_run_task (&nk->outgoing_tasks, 
                                          (void*)buf, 1))) {
-        //DC_object_get ((DC_object_t*)buf);
         NK_release_buffer (buf);
     }
 
@@ -244,7 +243,7 @@ int NK_buffer_init (NKBuffer *buf)
 void NK_buffer_release (NKBuffer *buf)
 {
     if (buf->peer) {
-        DC_object_release ((DC_object_t*)buf->peer);
+        NK_release_peer (buf->peer);
         buf->peer = NULL;
     }
 }
@@ -253,11 +252,12 @@ static void NK_free (const char *cls, DC_object_t *obj, void *data)
 {
     NetKit *nk = data;
 
-    DC_locker_lock (&nk->locker, 0, 1);
     if (DC_object_is_kind_of (obj, "NKPeer")) {
         NK_peer_release ((NKPeer*)obj);
         if (nk->config->max_peers) {
+            DC_locker_lock (&nk->locker, 0, 1);
             DC_buffer_pool_free (&nk->peer_pool, DC_buffer_from ((DC_buffer_t*)obj));
+            DC_locker_unlock (&nk->locker);
         } else {
             free (obj);
         }
@@ -271,7 +271,6 @@ static void NK_free (const char *cls, DC_object_t *obj, void *data)
             free (obj);
         }
     }
-    DC_locker_unlock (&nk->locker);
 }
 
 void *NK_get_userdata (NetKit *nk)

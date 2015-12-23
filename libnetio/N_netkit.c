@@ -139,9 +139,7 @@ DC_INLINE void __NK_write_cb (void *user, void *data)
     NKPeer *peer = buf->peer;
 
     __do_write (user, peer, buf);
-    NK_buffer_remove_peer (buf);
     NK_release_buffer(buf);
-    NK_sync (user);
 }
 
 /*
@@ -167,12 +165,8 @@ DC_INLINE void __NK_process_cb (void *userdata, void *data)
 
     nkbuf = (NKBuffer*)data;
     peer    = nkbuf->peer;
-    //DC_locker_lock (&peer->lock, 0 ,1);
     __do_process (nk, peer, nkbuf);
-    NK_buffer_remove_peer (nkbuf);
     NK_release_buffer (nkbuf);
-    //DC_locker_unlock (&peer->lock);
-    NK_sync (nk);
 }
 
 DC_INLINE void __NK_pipe_destroy (NetKit *nk)
@@ -191,8 +185,6 @@ DC_INLINE void __NK_read_callback (struct ev_loop *ev, ev_io *w, int revents)
     NKPeer *peer = w->data;
     NetKit *nk  = ev_userdata (ev);
 
-    //NK_stop_peer (nk, peer);
-    //DC_task_queue_run_task (&nk->read_queue, (void*)peer, 1);
     __do_read (nk, peer);
 }
 
@@ -200,11 +192,7 @@ DC_INLINE void __NK_accept_callback (struct ev_loop *ev, ev_io *w, int revents)
 {
     NKPeer *peer = w->data;
     NetKit *nk   = ev_userdata (ev);
-    
-    //NK_remove_peer (nk, peer);
-    //ev_io_stop (nk->ev_loop, &peer->ev_io);
-    //NK_stop_peer (nk, peer);
-    //DC_task_queue_run_task (&nk->read_queue, (void*)peer, 1);
+
     __do_accept (nk, peer);
 }
 
@@ -427,8 +415,8 @@ void NK_add_peer (NetKit *nk, NKPeer *peer, int ev)
     peer->ev_io.data = peer;
     peer->last_update = nk->counter;
     ev_io_start (nk->ev_loop, &peer->ev_io);
-    NK_peer_get (peer);
     DC_locker_unlock (&nk->locker);
+    NK_peer_get (peer);
 }
 
 void NK_remove_peer (NetKit *nk, NKPeer *peer)
@@ -436,7 +424,6 @@ void NK_remove_peer (NetKit *nk, NKPeer *peer)
     DC_locker_lock (&nk->locker, 0, 1);
     DC_list_remove_object (&nk->peer_set, &peer->peer_list);
     ev_io_stop (nk->ev_loop, &peer->ev_io);
-
     DC_locker_unlock (&nk->locker);
     NK_release_peer (peer);
 }
