@@ -78,7 +78,7 @@ static void __do_read(NetKit *nk, NKPeer *peer)
     }
     nkbuf->iobuf.data = nkbuf->buffer;
     nkbuf->iobuf.size = nkbuf->size;
-    
+
     nkbuf->length = NetIORead(&peer->io, &nkbuf->iobuf);
     if (nkbuf->length < 0) {
         if (nk->delegate && nk->delegate->didFailureToReceiveData) {
