@@ -94,6 +94,7 @@ DC_INLINE void __NK_config_log (const char *logpath)
 
 void NK_release_peer (NKPeer *peer)
 {
+    //Dlog ("release peer: %d", peer->super.refcount);
     DC_object_release ((DC_object_t*)peer);
 }
 
@@ -123,7 +124,9 @@ NKBuffer *NK_buffer_get (NKBuffer *buf)
 
 NKPeer *NK_peer_get (NKPeer *peer)
 {
-    return (NKPeer*)DC_object_get ((DC_object_t*)peer);
+    DC_object_get ((DC_object_t*)peer);
+    //Dlog ("inc peer: %d", peer->super.refcount);
+    return peer;
 }
 
 void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer)

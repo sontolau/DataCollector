@@ -1,5 +1,6 @@
 #include <json.h>
 #include "keyval.h"
+#include "log.h"
 
 static DC_keyval_t *keyval_from_json (json_object*);
 static DC_keyval_t *keyval_from_array (json_object *object)
@@ -9,7 +10,8 @@ static DC_keyval_t *keyval_from_array (json_object *object)
     int i = 0;
     json_object *obj = NULL;
 
-    if ((object && (length = json_object_array_length (object)))) {
+    if (is_error (object) ||
+    		(length = json_object_array_length (object)) <= 0) {
         return NULL;
     }
 
@@ -54,51 +56,111 @@ DC_keyval_t *keyval_from_json (json_object *object)
     DC_keyval_t *kvs = NULL;
     int length = 0;
     int i      = 0;
+    struct json_object_iterator it;
+    struct json_object_iterator itEnd;
+    struct json_object* obj = object;
+    char *jkey;
+    struct json_object *jvalue;
 
-    if (!(object && (length = json_object_object_length (object)) > 0)) {
+    if (is_error (object) ||
+    		(length = json_object_object_length (object)) <= 0) {
         return NULL;
     }
 
     kvs = calloc (length+1, sizeof (DC_keyval_t));
 
-    json_object_object_foreach (object, jkey, jvalue) {
-        if (i < length && kvs && jkey && jvalue) {
-            switch (json_object_get_type (jvalue)) {
-                case json_type_int: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_INT, json_object_get_int (jvalue));
-                }
-                    break;
-                case json_type_string: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_STRING, json_object_get_string (jvalue));
-                }
-                    break;
-                case json_type_object: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, keyval_from_json (jvalue));
-                }
-                    break;
-                case json_type_array: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_ARRAY, keyval_from_array (jvalue));
-                }
-                    break;
-                case json_type_double: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_DOUBLE, json_object_get_double (jvalue));
-                } break;
-                case json_type_boolean: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_BOOL, json_object_get_boolean (jvalue));
-                } break;
-                case json_type_null: {
-                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, NULL);
-                } break;
-                default: {
-                	DC_keyval_set (&kvs[i], jkey, KV_TYPE_ID, 0);
-                }
-                break;
-            }
-        } else {
-            break;
-        }
-        i++;
-    }
+    it = json_object_iter_begin(obj);
+    itEnd = json_object_iter_end(obj);
+ 
+    while (!json_object_iter_equal(&it, &itEnd) && i < length) {
+        jkey = (char*)json_object_iter_peek_name(&it);
+        jvalue = json_object_iter_peek_value (&it);
+		if (jkey) {
+			switch (json_object_get_type(jvalue)) {
+			case json_type_int: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_INT,
+						json_object_get_int(jvalue));
+			}
+				break;
+			case json_type_string: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_STRING,
+						json_object_get_string(jvalue));
+			}
+				break;
+			case json_type_object: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_KEYVAL,
+						keyval_from_json(jvalue));
+			}
+				break;
+			case json_type_array: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_ARRAY,
+						keyval_from_array(jvalue));
+			}
+				break;
+			case json_type_double: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_DOUBLE,
+						json_object_get_double(jvalue));
+			}
+				break;
+			case json_type_boolean: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_BOOL,
+						json_object_get_boolean(jvalue));
+			}
+				break;
+			case json_type_null: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_KEYVAL, NULL);
+			}
+				break;
+			default: {
+				DC_keyval_set(&kvs[i], jkey, KV_TYPE_ID, 0);
+			}
+				break;
+			}
+		} else {
+			break;
+		}
+		i++;
+		json_object_iter_next(&it);
+	}
+ 
+//    json_object_object_foreach (object, jkey, jvalue) {
+//        if (i < length && kvs && jkey && jvalue) {
+//            switch (json_object_get_type (jvalue)) {
+//                case json_type_int: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_INT, json_object_get_int (jvalue));
+//                }
+//                    break;
+//                case json_type_string: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_STRING, json_object_get_string (jvalue));
+//                }
+//                    break;
+//                case json_type_object: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, keyval_from_json (jvalue));
+//                }
+//                    break;
+//                case json_type_array: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_ARRAY, keyval_from_array (jvalue));
+//                }
+//                    break;
+//                case json_type_double: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_DOUBLE, json_object_get_double (jvalue));
+//                } break;
+//                case json_type_boolean: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_BOOL, json_object_get_boolean (jvalue));
+//                } break;
+//                case json_type_null: {
+//                    DC_keyval_set (&kvs[i], jkey, KV_TYPE_KEYVAL, NULL);
+//                } break;
+//                default: {
+//                	DC_keyval_set (&kvs[i], jkey, KV_TYPE_ID, 0);
+//                }
+//                break;
+//            }
+//        } else {
+//            break;
+//        }
+//        i++;
+//    }
     DC_keyval_set_zero (&kvs[i]);
     return kvs;
 }
@@ -217,14 +279,26 @@ void DC_keyval_setp (DC_keyval_t *_kv,
 
 DC_keyval_t *DC_keyval_array_from_json (const char *jsonstr)
 {
-    json_object *root = NULL;
+    struct json_tokener* tok = NULL;
+    json_object        * root = NULL;
+    enum json_tokener_error jerr;
+    DC_keyval_t        *kvs = NULL;
+    int slen = strlen (jsonstr);
 
-    root = json_tokener_parse (jsonstr);
-    if (!root) {
-        return NULL;
+    if (!(tok = json_tokener_new ())) return NULL;
+    do {
+        root = json_tokener_parse_ex(tok, jsonstr, slen);
+    } while ((jerr = json_tokener_get_error(tok)) == json_tokener_continue);
+
+    if (tok->char_offset < slen) {
+    } else if (jerr == json_tokener_success) {
+        kvs = keyval_from_json (root);
+    } else {
+        Elog ("%s", json_tokener_error_desc(jerr));   
     }
-
-    return keyval_from_json (root);
+    
+    json_tokener_free (tok);
+    return kvs;
 }
 
 const char *DC_keyval_array_to_json (const DC_keyval_t *kv)
