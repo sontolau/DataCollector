@@ -16,20 +16,6 @@ static NKConfig DefaultConfig = {
     .watch_dog = WATCH_DOG (1, 0),
 };
 
-/*
-#define COM_ACCEPT			1
-#define	COM_PROCESS	        2
-#define	COM_SEND			3
-#define COM_RECEIVE         4
-
-enum {
-    ADD_PEER = 1,
-    START_PEER = 2,
-    STOP_PEER,
-    REMOVE_PEER,
-};
-*/
-
 typedef struct peer_ev {
     int ev;
 } peer_ev_t;
@@ -141,21 +127,6 @@ DC_INLINE void __NK_write_cb (void *user, void *data)
     __do_write (user, peer, buf);
     NK_release_buffer(buf);
 }
-
-/*
-DC_INLINE void __NK_read_cb (void *userdata, void *data)
-{
-    NKPeer *peer = (NKPeer*)data;
-    NetKit *nk = userdata;
-
-    if (peer->server) {
-        __do_accept (nk, peer);
-    } else {
-        __do_read (nk, peer);
-    }
-    NK_sync (nk);
-}
-*/
 
 DC_INLINE void __NK_process_cb (void *userdata, void *data)
 {
@@ -439,7 +410,6 @@ void NK_start_peer (NetKit *nk, NKPeer *peer)
 {
     DC_locker_lock (&nk->locker, 0, 1);
     ev_io_start (nk->ev_loop, &peer->ev_io);
-    //NK_sync (nk);
     DC_locker_unlock (&nk->locker);
 
 }
@@ -448,7 +418,6 @@ void NK_destroy (NetKit *nk)
 {
     __NK_pipe_destroy (nk);
     DC_task_queue_destroy (&nk->incoming_tasks);
-    //DC_task_queue_destroy (&nk->read_queue);
     DC_task_queue_destroy (&nk->outgoing_tasks);
     ev_loop_destroy (nk->ev_loop);
     DC_list_destroy (&nk->peer_set);
@@ -461,7 +430,6 @@ void NK_stop (NetKit *nk)
 {
     if (nk->running) {
     	ev_break (nk->ev_loop, EVBREAK_ALL);
-        NK_sync (nk);
         nk->running = 0;
     }
 }

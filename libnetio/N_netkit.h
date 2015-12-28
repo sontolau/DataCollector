@@ -50,7 +50,6 @@ typedef struct _NKPeer {
     double        byte_rate;
     DC_locker_t lock;
     DC_list_elem_t peer_list;
-    //DC_list_t   buf_list;
     union {
         int int_value;
         void *pointer_value;
@@ -61,6 +60,15 @@ typedef struct _NKPeer {
 #define NK_peer_set_pointer(peer, pt) (peer->pointer_value = pt)
 #define NK_peer_get_int(peer) (peer->int_value)
 #define NK_peer_get_pointer(peer) (peer->pointer_value)
+#define NK_peer_lock(peer) \
+do {\
+	DC_locker_lock (&peer->lock, 0, 1);\
+} while (0)
+
+#define NK_peer_unlock(peer) \
+do {\
+	DC_locker_unlock(&peer->lock);\
+} while (0)
 
 extern int NK_peer_init (NKPeer *peer);
 extern void NK_peer_release (NKPeer *peer);
