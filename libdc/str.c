@@ -1,3 +1,4 @@
+#include "libdc.h"
 #include "str.h"
 
 const char *DC_struncate (char *str)
@@ -35,4 +36,29 @@ const char *DC_strtok (char **str, const char *delim)
     }
 
     return head;
+}
+
+int DC_substr (const char *str, const char *substr, int start)
+{
+	register char *ptr;
+
+	int szsubstr = strlen (substr);
+	int szstr = strlen (str);
+
+	if (start >= szstr) return -1;
+	if (szsubstr > szstr) return -1;
+
+	ptr = (char*)str + start;
+	while (*ptr) {
+		if (szstr - (ptr - str) < szsubstr) {
+			break;
+		}
+
+		if (!strncmp (ptr, substr, szsubstr)) {
+			return ptr - str;
+		}
+		ptr++;
+	}
+
+	return -1;
 }

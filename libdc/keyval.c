@@ -434,3 +434,93 @@ DC_keyval_t *DC_keyval_array_find_path (const DC_keyval_t *kvset, const char *pa
     return ptr;
 }
 
+static inline const char *int2str(int x)
+{
+	static char buf[100] = {0};
+
+	snprintf (buf, sizeof (buf), "%d", x);
+
+	return buf;
+}
+
+
+void DC_keyval_array_get_string3 (const DC_keyval_t *kvs,
+						   	   	  char **keys,
+						          char **values,
+							      char **kvstr,
+							      const char *sep)
+{
+	register DC_keyval_t *kvptr;
+	int szkeys    = 0;
+	int szvals    = 0;
+	int szkvs     = 0;
+	int szsep     = strlen (sep);
+
+	DC_keyval_array_foreach (kvptr, ((DC_keyval_t*)kvs)) {
+		szkeys += strlen (kvptr->key);
+		szkeys += szsep;
+
+		switch (kvptr->type) {
+		case KV_TYPE_INT:
+			szvals += strlen (int2str (kvptr->int_value));
+			break;
+		case KV_TYPE_STRING:
+			szvals += strlen (kvptr->string_value)+2;
+			break;
+		default:
+			continue;
+			break;
+		}
+		szvals += szsep;
+
+		szkvs += ( szkeys + szvals + 1 + szsep);
+	}
+
+    if (keys)
+	*keys   = calloc (1, szkeys + 10);
+    if (values)
+	*values = calloc (1, szvals + 10);
+    if (kvstr)
+	*kvstr  = calloc (1, szkvs + 10);
+
+	DC_keyval_array_foreach (kvptr, kvs) {
+		if (keys && *keys) {
+			sprintf (*keys, "%s%s%s", *keys, kvptr->key,sep);
+		}
+
+		//if (*values) {
+			switch (kvptr->type) {
+			case KV_TYPE_INT: {
+				if (values && *values) {
+					sprintf (*values, "%s%d%s", *values, kvptr->int_value, sep);
+				}
+				if (kvstr && *kvstr) {
+					sprintf (*kvstr, "%s%s=%d%s", *kvstr, kvptr->key, kvptr->int_value, sep);
+				}
+			} break;
+			case KV_TYPE_STRING: {
+				if (values && *values) {
+					sprintf (*values, "%s\'%s\'%s", *values, kvptr->string_value, sep);
+				}
+				if (kvstr && *kvstr) {
+					sprintf (*kvstr, "%s%s=\'%s\'%s", *kvstr, kvptr->key, kvptr->string_value, sep);
+				}
+			} break;
+			default:
+				break;
+			}
+		// }
+	}
+
+	if (keys && *keys) {
+		(*keys)[strlen (*keys)-szsep] = '\0';
+	}
+
+	if (values && *values) {
+		(*values)[strlen (*values)-szsep] = '\0';
+	}
+
+	if (kvstr && *kvstr) {
+		(*kvstr)[strlen (*kvstr)-szsep] = '\0';
+	}
+}

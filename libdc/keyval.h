@@ -70,4 +70,10 @@ extern DC_keyval_t *DC_keyval_array_find (const DC_keyval_t*, const char*);
 extern DC_keyval_t *DC_keyval_array_find_path (const DC_keyval_t*, const char *path[]);
 
 
+extern void DC_keyval_array_get_string3 (const DC_keyval_t *kvs,
+						   	   	  	  	  char **keys,
+						   	   	  	  	  char **values,
+						   	   	  	  	  char **kvstr,
+						   	   	  	  	  const char *sep);
+
 #endif
