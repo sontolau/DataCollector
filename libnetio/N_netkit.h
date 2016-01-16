@@ -18,12 +18,11 @@ typedef struct _NKBuffer {
     int  tag;
     long size;
     long length;
-    //DC_list_elem_t __list;
     unsigned char buffer[0];
 } NKBuffer;
 
-extern int NK_buffer_init (NKBuffer *buf);
-extern void NK_buffer_release (NKBuffer *buf);
+extern int NK_buffer_init (NKBuffer *buf, int szbuf);
+extern void NK_buffer_destroy (NKBuffer *buf);
 extern void NK_buffer_remove_peer (NKBuffer *buf);
 extern void NK_buffer_set_peer (NKBuffer *buf, struct _NKPeer *peer);
 
@@ -48,30 +47,22 @@ typedef struct _NKPeer {
     unsigned int last_update;
     unsigned long total_bytes;
     double        byte_rate;
-    DC_locker_t lock;
-    DC_list_elem_t peer_list;
+    DC_object_t   *object;
     union {
         int int_value;
         void *pointer_value;
     };
 } NKPeer;
 
+extern int NK_peer_init (NKPeer*);
+extern void NK_peer_destroy (NKPeer*);
+#define NK_peer_get_object(peer) (peer->object)
+#define NK_peer_set_object(peer, obj) (peer->object = DC_object_get((DC_object_t*)obj))
 #define NK_peer_set_int(peer, intval) (peer->int_value = intval)
 #define NK_peer_set_pointer(peer, pt) (peer->pointer_value = pt)
 #define NK_peer_get_int(peer) (peer->int_value)
 #define NK_peer_get_pointer(peer) (peer->pointer_value)
-#define NK_peer_lock(peer) \
-do {\
-	DC_locker_lock (&peer->lock, 0, 1);\
-} while (0)
 
-#define NK_peer_unlock(peer) \
-do {\
-	DC_locker_unlock(&peer->lock);\
-} while (0)
-
-extern int NK_peer_init (NKPeer *peer);
-extern void NK_peer_release (NKPeer *peer);
 
 typedef struct _NKConfig {
     char *chdir;
@@ -110,21 +101,25 @@ typedef struct _NKDelegate {
     void (*didFailureToSendData) (struct _NetKit*, NKPeer *peer, NKBuffer *buf);
     void (*processData) (struct _NetKit*, NKPeer*, NKBuffer*);
     void (*didReceiveSignal) (struct _NetKit*, int);
+//
+//    NKPeer* (*allocPeerWithInit) (struct _NetKit*);
+//    NKBuffer* (*allocBufferWithInit) (struct _NetKit*);
+
 } NKDelegate;
 
 typedef struct _NetKit {
     DC_list_t      peer_set;
-    int            pfds[2];
+    //int            pfds[2];
     struct ev_loop *ev_loop;
     int running;
     ev_signal *sig_map;
     DC_thread_t watch_dog;
     DC_task_queue_t incoming_tasks;
     DC_task_queue_t outgoing_tasks;
-    struct {
-    	DC_buffer_pool_t peer_pool;
-    	DC_buffer_pool_t buffer_pool;
-    };
+//    struct {
+//    	DC_buffer_pool_t peer_pool;
+//    	DC_buffer_pool_t buffer_pool;
+//    };
     unsigned int counter;
     NKConfig   *config;
     void        *private_data;
@@ -155,9 +150,9 @@ extern void NK_stop (NetKit *nk);
 extern void NK_destroy (NetKit *nk);
 extern NKPeer *NK_alloc_peer_with_init (NetKit *nk);
 extern NKBuffer *NK_alloc_buffer_with_init (NetKit *nk);
-extern NKPeer *NK_peer_get (NKPeer*);
-extern NKBuffer *NK_buffer_get (NKBuffer*);
-extern void NK_release_buffer(NKBuffer *buf);
-extern void NK_release_peer(NKPeer *peer);
-
+/*
+extern void *NK_malloc (NetKit *nk, int *sz);
+extern void NK_memcpy (NetKit *nk, void *dest, void *src, int ncpy);
+extern void NK_free (NetKit *nk, void *buf);
+*/
 #endif

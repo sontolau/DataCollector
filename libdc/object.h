@@ -2,13 +2,13 @@
 #define _DC_OBJECT_H
 
 #include "libdc.h"
-
+#include "locker.h"
 
 typedef struct _DC_object {
     int refcount;
     char class_name[SZ_CLASS_NAME+1];
     void *data;
-   
+    DC_locker_t lock;
     struct _DC_object* (*PRI (alloc)) (const char*, unsigned int, void*);
     void (*PRI (free)) (const char*, struct _DC_object *obj, void*);
     void (*PRI (release)) (struct _DC_object*, void*);
@@ -36,6 +36,13 @@ extern DC_object_t *DC_object_get (DC_object_t *obj);
 extern int DC_object_get_refcount (DC_object_t *obj);
 
 extern int DC_object_is_kind_of (DC_object_t *obj, const char *cls);
+
+#define DC_object_sync_run(obj, block) \
+	do {\
+		DC_locker_lock (&obj->lock, 0, 1);\
+		block;\
+		DC_locker_unlock (&obj->lock);\
+	} while (0)
 
 //extern void DC_object_destroy (DC_object_t *obj);
 

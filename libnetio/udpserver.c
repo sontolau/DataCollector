@@ -75,7 +75,7 @@ void proc_func (NetKit *nk, NKPeer *peer, NKBuffer *buf)
     char *str = "Replying ....\n";
     proc_counter++;
     //NK_buffer_set_data (buf, (unsigned char*)str, strlen (str));
-    NK_commit_buffer (nk, NK_buffer_get (buf));
+    NK_commit_buffer (nk, DC_object_get (buf));
 }
 
 static NKDelegate delegate = {

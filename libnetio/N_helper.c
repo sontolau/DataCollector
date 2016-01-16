@@ -25,18 +25,6 @@ DC_INLINE void __NK_config_log (const char *logpath)
     dup2 (fileno (logfp), fileno (stdout));
 }
 
-
-void NK_release_peer (NKPeer *peer)
-{
-    //Dlog ("release peer: %d", peer->super.refcount);
-    DC_object_release ((DC_object_t*)peer);
-}
-
-
-void NK_release_buffer (NKBuffer *buf)
-{
-    DC_object_release ((DC_object_t*)buf);
-}
 void NK_set_userdata (NetKit *nk, const void *data)
 {
     DC_locker_lock (&nk->locker, 0, 1);
@@ -51,31 +39,19 @@ void NK_set_delegate (NetKit *nk, NKDelegate *delegate)
     DC_locker_unlock (&nk->locker);
 }
 
-NKBuffer *NK_buffer_get (NKBuffer *buf)
-{
-    return (NKBuffer*)DC_object_get ((DC_object_t*)buf);
-}
-
-NKPeer *NK_peer_get (NKPeer *peer)
-{
-    DC_object_get ((DC_object_t*)peer);
-    //Dlog ("inc peer: %d", peer->super.refcount);
-    return peer;
-}
-
 void NK_buffer_set_peer (NKBuffer *buf, NKPeer *peer)
 {
     if (buf->peer && buf->peer != peer) {
         NK_buffer_remove_peer (buf);
     }
 
-    buf->peer = NK_peer_get (peer);
+    buf->peer = (NKPeer*)DC_object_get ((DC_object_t*)peer);
 }
 
 void NK_buffer_remove_peer (NKBuffer *buf)
 {
     if (buf->peer) {
-        NK_release_peer (buf->peer);
+        DC_object_release ((DC_object_t*)buf->peer);
         buf->peer = NULL;
     }
 }
@@ -84,10 +60,10 @@ int NK_commit_buffer (NetKit *nk, NKBuffer *buf)
 {
     int ret = ERR_OK;
     
-    NK_buffer_get (buf);
+    DC_object_get ((DC_object_t*)buf);
     if ((ret = DC_task_queue_run_task (&nk->outgoing_tasks, 
                                          (void*)buf, 1))) {
-        NK_release_buffer (buf);
+        DC_object_release ((DC_object_t*)buf);
     }
 
     return ret;
@@ -108,107 +84,34 @@ int NK_commit_bulk_buffers (NetKit *nk, NKBuffer **buf, int num)
     return i;
 }
 
-static DC_object_t *NK_malloc (const char *cls,
-                               unsigned int szcls,
-                               void *data)
-{
-    NetKit *nk = data;
-    NKPeer *peer = NULL;
-    NKBuffer *nkbuf = NULL;
-    DC_buffer_t *buf = NULL;
-
-    if (!strcmp (cls, "NKPeer")) {
-        DC_locker_lock (&nk->locker, 0, 1);
-        if (nk->config->max_peers) {
-            buf = DC_buffer_pool_alloc (&nk->peer_pool, sizeof (NKPeer));
-            if (buf) {
-                peer = (NKPeer*)buf->buffer;
-            }
-        } else {
-            peer = calloc (1, sizeof (NKPeer));
-        }
-        DC_locker_unlock (&nk->locker);
-        return (DC_object_t*)peer;
-
-    } else if (!strcmp (cls, "NKBuffer")) {
-        DC_locker_lock (&nk->locker, 0, 1);
-        if (nk->config->max_sockbufs > 0) {
-            DC_locker_lock (&nk->locker ,0, 1);
-            buf = DC_buffer_pool_alloc (&nk->buffer_pool, 
-                                        nk->config->max_sockbuf_size);
-            if (buf) {
-                nkbuf = (NKBuffer*)buf->buffer;
-            }
-            DC_locker_unlock (&nk->locker);
-        } else {
-            nkbuf = (NKBuffer*)calloc (1, 
-                    sizeof (NKBuffer)+nk->config->max_sockbuf_size);
-        }
-        if (nkbuf) {
-            nkbuf->peer = NULL;
-            nkbuf->size = nk->config->max_sockbuf_size;
-            nkbuf->length = 0;
-            memset (nkbuf->buffer, '\0', nkbuf->size);
-        }
-        //Dlog ("Alloc: %p", nkbuf);
-        DC_locker_unlock (&nk->locker);
-        return (DC_object_t*)nkbuf;
-    }
-
-    return NULL;
-}
-
 int NK_peer_init (NKPeer *peer)
 {
-    DC_locker_init (&peer->lock, 0, NULL);
-    //DC_list_init (&peer->buf_list, NULL, NULL);
     return 0;
 }
 
-void NK_peer_release (NKPeer *peer)
+void NK_peer_destroy (NKPeer *peer)
 {
-    DC_locker_destroy (&peer->lock);
+	if (peer->object) {
+		DC_object_release (peer->object);
+	}
 }
-
-int NK_buffer_init (NKBuffer *buf)
+int NK_buffer_init (NKBuffer *buf, int szbuf)
 {
+	buf->size = szbuf;
     buf->iobuf.data = buf->buffer;
     buf->iobuf.size = buf->size;
+
     return 0;
 }
 
-void NK_buffer_release (NKBuffer *buf)
+void NK_buffer_destroy (NKBuffer *buf)
 {
     if (buf->peer) {
-        NK_release_peer (buf->peer);
+        DC_object_release ((DC_object_t*)buf->peer);
         buf->peer = NULL;
     }
 }
 
-static void NK_free (const char *cls, DC_object_t *obj, void *data)
-{
-    NetKit *nk = data;
-
-    if (DC_object_is_kind_of (obj, "NKPeer")) {
-        NK_peer_release ((NKPeer*)obj);
-        if (nk->config->max_peers) {
-            DC_locker_lock (&nk->locker, 0, 1);
-            DC_buffer_pool_free (&nk->peer_pool, DC_buffer_from ((DC_buffer_t*)obj));
-            DC_locker_unlock (&nk->locker);
-        } else {
-            free (obj);
-        }
-    } else if (DC_object_is_kind_of (obj, "NKBuffer")) {
-        NK_buffer_release ((NKBuffer*)obj);
-        if (nk->config->max_sockbufs) {
-            DC_locker_lock (&nk->locker, 0, 1);
-            DC_buffer_pool_free (&nk->buffer_pool, DC_buffer_from ((DC_buffer_t*)obj));
-            DC_locker_unlock (&nk->locker);
-        } else {
-            free (obj);
-        }
-    }
-}
 
 void *NK_get_userdata (NetKit *nk)
 {
@@ -219,34 +122,74 @@ void *NK_get_userdata (NetKit *nk)
     return data;
 }
 
+static void NKPeer_release (DC_object_t *o, void *data)
+{
+	NK_peer_destroy ((NKPeer*)o);
+}
+
 NKPeer *NK_alloc_peer_with_init (NetKit *nk)
 {
-    NKPeer *peer = (NKPeer*)DC_object_alloc (sizeof (NKPeer),
-                                    "NKPeer",
-                                    nk,
-                                    NK_malloc,
-                                    NK_free,
-                                    NULL);
-    if (peer && NK_peer_init (peer)) {
-        DC_object_release ((DC_object_t*)peer);
-        return NULL;
+
+    NKPeer *peer = NULL;
+
+    if ((peer = DC_object_new (NKPeer, NULL))) {
+    	NK_peer_init (peer);
     }
+
 
     return peer;
 }
 
+static void NKBuffer_release (DC_object_t *o, void *data)
+{
+	NK_buffer_destroy ((NKBuffer*)o);
+}
+
 NKBuffer *NK_alloc_buffer_with_init (NetKit *nk)
 {
-    NKBuffer *buf = (NKBuffer*)DC_object_alloc (sizeof (NKBuffer),
-                                    "NKBuffer",
-                                    nk,
-                                    NK_malloc,
-                                    NK_free,
-                                    NULL);
-    if (buf && NK_buffer_init (buf)) {
-        DC_object_release ((DC_object_t*)buf);
-        return NULL;
+    NKBuffer *buf = NULL;
+
+    buf = (NKBuffer*)DC_object_alloc (sizeof(NKBuffer)+nk->config->max_sockbuf_size,
+    		"NKBuffer",
+    		NULL,
+    		NULL,
+    		NULL,
+    		NKBuffer_release);
+
+    if (buf) {
+    	if (NK_buffer_init (buf, nk->config->max_sockbuf_size) < 0) {
+    		DC_object_release ((DC_object_t*)buf);
+    		return NULL;
+    	}
     }
 
     return buf;
+}
+
+void *NK_malloc (NetKit *nk, int *szbuf)
+{
+	NKBuffer *buf = NK_alloc_buffer_with_init (nk);
+
+	if (buf) *szbuf = buf->size;
+    Dlog ("Alloc: %p", buf);
+	return buf?buf->buffer:NULL;
+}
+
+void NK_memcpy (NetKit *nk, void *dest, void *src, int ncpy)
+{
+    NKBuffer *nkbuf = NULL;
+
+    nkbuf = CONTAINER_OF (dest, NKBuffer, buffer);
+    ncpy = (ncpy>nkbuf->size?nkbuf->size:ncpy);
+    memcpy (dest, src, ncpy);
+    nkbuf->length = ncpy;
+}
+
+void NK_free (NetKit *nk, void *buf)
+{
+	NKBuffer *nkbuf = NULL;
+
+	nkbuf = CONTAINER_OF (buf, NKBuffer, buffer);
+    Dlog ("Free: %p", nkbuf);
+	DC_object_release ((DC_object_t*)nkbuf);
 }

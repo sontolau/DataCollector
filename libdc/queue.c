@@ -1,24 +1,24 @@
 #include "queue.h"
 
-DC_INLINE unsigned long long __get_queue_offset (obj_t *curpos, obj_t *startpos, int size)
+DC_INLINE unsigned long long __get_queue_offset (LLVOID_t *curpos, LLVOID_t *startpos, int size)
 {
     unsigned int offset = (unsigned char*)curpos - (unsigned char*)startpos;
 
-    return ((int)(offset / sizeof (obj_t)))%size;
+    return ((int)(offset / sizeof (LLVOID_t)))%size;
 }
 
-DC_INLINE obj_t *__recalc_address (DC_queue_t *queue, obj_t *ptr)
+DC_INLINE LLVOID_t *__recalc_address (DC_queue_t *queue, LLVOID_t *ptr)
 {
     return  (queue->PRI (buffer) + __get_queue_offset (++ptr,
                                          queue->PRI (buffer),
                                          queue->size));
 }
 
-int DC_queue_init (DC_queue_t *queue, unsigned int size, obj_t zero)
+int DC_queue_init (DC_queue_t *queue, unsigned int size, LLVOID_t zero)
 {
     int i = 0;
 
-    queue->__buffer = (obj_t*)calloc (size, sizeof (obj_t));
+    queue->__buffer = (LLVOID_t*)calloc (size, sizeof (LLVOID_t));
     if (!queue->__buffer) {
         return ERR_FAILURE;
     }
@@ -48,7 +48,7 @@ int DC_queue_is_full (const DC_queue_t *queue)
 }
 
 
-int DC_queue_add (DC_queue_t *queue, obj_t obj, int overwrite)
+int DC_queue_add (DC_queue_t *queue, LLVOID_t obj, int overwrite)
 {
     if (!overwrite && DC_queue_is_full (queue)) {
         return ERR_FULL;
@@ -71,9 +71,9 @@ int DC_queue_get_length (const DC_queue_t *queue)
     return queue->size - (queue->PRI (tail_ptr)-queue->PRI (head_ptr));
 }
 
-obj_t DC_queue_fetch (DC_queue_t *queue)
+LLVOID_t DC_queue_fetch (DC_queue_t *queue)
 {
-    obj_t obj;
+    LLVOID_t obj;
 
     if (DC_queue_is_empty (queue)) {
         return queue->zero_value;

@@ -37,6 +37,7 @@ DC_object_t *DC_object_alloc (long size,
         obj->PRI (release) = __release;
         obj->PRI (alloc)   = __alloc;
         obj->PRI (free)    = __free;
+        DC_locker_init (&obj->lock, 0, NULL);
     }
 	return obj;
 }
@@ -55,6 +56,7 @@ void DC_object_release(DC_object_t *obj) {
 	if (obj) {
 		obj->refcount--;
 		if (obj->refcount <= 0) {
+			DC_locker_destroy (&obj->lock);
             if (obj->PRI (release)) obj->PRI (release) (obj, obj->data);
             obj->PRI (free) (obj->class_name, obj, obj->data);
 		}

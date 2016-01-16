@@ -28,7 +28,7 @@ int DC_buffer_pool_init (DC_buffer_pool_t *pool, int num, unsigned int size)
         buf_ptr->size   = size;
         buf_ptr->length = 0;
         memset (buf_ptr->buffer, '\0', size);
-        DC_queue_add (&pool->PRI (buf_queue), (obj_t)buf_ptr, 0);
+        DC_queue_add (&pool->PRI (buf_queue), (LLVOID_t)buf_ptr, 0);
     }
 
     return ERR_OK;
@@ -53,7 +53,7 @@ void     DC_buffer_pool_free (DC_buffer_pool_t *pool, DC_buffer_t *buf)
 
         memset (buf->buffer, '\0', pool->unit_size);
 
-        DC_queue_add (&pool->PRI (buf_queue), (obj_t)buf, 0);
+        DC_queue_add (&pool->PRI (buf_queue), (LLVOID_t)buf, 0);
         pool->num_left++;
     }
 }

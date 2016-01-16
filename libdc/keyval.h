@@ -18,7 +18,6 @@ enum {
 };
 
 typedef struct _DC_keyval {
-    //char key[MAX_KEY_LEN+1];
     char *key;
     int  type;
     union {

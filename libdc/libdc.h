@@ -101,5 +101,25 @@ do {\
 #include "error.h"
 
 #define CLASS_EXTENDS(__class)    __class PRI(super)
+#define DC_malloc(size)   calloc(1, size)
+#define DC_free(ptr)      free(ptr)
+
+typedef unsigned long long LLVOID_t;
+
+//typedef union {
+//	char char_value;
+//	unsigned char uchar_value;
+//	short short_value;
+//	unsigned short ushort_value;
+//	int int_value;
+//	unsigned int uint_value;
+//	long long_value;
+//	unsigned long ulong_value;
+//	long long llong_value;
+//	unsigned long long ullong_value;
+//	void *pointer_value;
+//	float float_value;
+//	double double_value;
+//} DC_pointer_t ;
 
 #endif

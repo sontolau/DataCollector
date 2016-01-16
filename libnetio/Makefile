@@ -1,7 +1,7 @@
 LIBNETIO=libnetio.so libnetio.a
 LIBS=-lpthread -lgnutls -lev
 #LIBPATH=-L./ -L../libdc
-APPS= tcpserver tcpsender
+APPS= #tcpserver tcpsender
 OBJS=N_io.o N_netkit.o
 CC=cc
 FLAGS=-Wall -fPIC -g
