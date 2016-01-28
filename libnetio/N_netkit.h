@@ -54,10 +54,10 @@ typedef struct _NKPeer {
     };
 } NKPeer;
 
-extern int NK_peer_init (NKPeer*);
+extern int NK_peer_init (NKPeer*, const NetAddrInfo_t*, int type);
 extern void NK_peer_destroy (NKPeer*);
 #define NK_peer_get_object(peer) (peer->object)
-#define NK_peer_set_object(peer, obj) (peer->object = DC_object_get((DC_object_t*)obj))
+//#define NK_peer_set_object(peer, obj) (peer->object = DC_object_get((DC_object_t*)obj))
 #define NK_peer_set_int(peer, intval) (peer->int_value = intval)
 #define NK_peer_set_pointer(peer, pt) (peer->pointer_value = pt)
 #define NK_peer_get_int(peer) (peer->int_value)
@@ -148,7 +148,7 @@ extern int NK_commit_bulk_buffers (NetKit *kit, NKBuffer **buf, int num);
 extern int NK_run (NetKit *nk);
 extern void NK_stop (NetKit *nk);
 extern void NK_destroy (NetKit *nk);
-extern NKPeer *NK_alloc_peer_with_init (NetKit *nk);
+extern NKPeer *NK_alloc_peer_with_init (NetKit *nk, NetAddrInfo_t *addr, int type);
 extern NKBuffer *NK_alloc_buffer_with_init (NetKit *nk);
 /*
 extern void *NK_malloc (NetKit *nk, int *sz);

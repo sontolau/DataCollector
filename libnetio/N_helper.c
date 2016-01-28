@@ -84,8 +84,11 @@ int NK_commit_bulk_buffers (NetKit *nk, NKBuffer **buf, int num)
     return i;
 }
 
-int NK_peer_init (NKPeer *peer)
+int NK_peer_init (NKPeer* peer, const NetAddrInfo_t* addr, int type)
 {
+	if (addr && NetIOInit (&peer->io, addr, type) < 0) {
+		return -1;
+	}
     return 0;
 }
 
@@ -94,6 +97,8 @@ void NK_peer_destroy (NKPeer *peer)
 	if (peer->object) {
 		DC_object_release (peer->object);
 	}
+
+	NetIODestroy (&peer->io);
 }
 int NK_buffer_init (NKBuffer *buf, int szbuf)
 {
@@ -127,15 +132,17 @@ static void NKPeer_release (DC_object_t *o, void *data)
 	NK_peer_destroy ((NKPeer*)o);
 }
 
-NKPeer *NK_alloc_peer_with_init (NetKit *nk)
+NKPeer *NK_alloc_peer_with_init (NetKit *nk, NetAddrInfo_t *addr, int type)
 {
 
     NKPeer *peer = NULL;
 
     if ((peer = DC_object_new (NKPeer, NULL))) {
-    	NK_peer_init (peer);
+    	if (NK_peer_init (peer, addr, type) < 0) {
+    		DC_object_release ((DC_object_t*)peer);
+    		return NULL;
+    	}
     }
-
 
     return peer;
 }

@@ -29,7 +29,7 @@ static void __do_accept (NetKit *nk, NKPeer *peer)
 {
     NKPeer *newpeer;
 
-    if (!(newpeer = NK_alloc_peer_with_init (nk))) {
+    if (!(newpeer = NK_alloc_peer_with_init (nk, NULL, 0))) {
     	return;
     }
 
