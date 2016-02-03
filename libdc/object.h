@@ -39,9 +39,9 @@ extern int DC_object_is_kind_of (DC_object_t *obj, const char *cls);
 
 #define DC_object_sync_run(obj, block) \
 	do {\
-		DC_locker_lock (&obj->lock, 0, 1);\
+		DC_locker_lock (&((DC_object_t*)obj)->lock, 0, 1);\
 		block;\
-		DC_locker_unlock (&obj->lock);\
+		DC_locker_unlock (&((DC_object_t*)obj)->lock);\
 	} while (0)
 
 //extern void DC_object_destroy (DC_object_t *obj);

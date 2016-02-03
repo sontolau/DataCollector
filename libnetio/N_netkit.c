@@ -29,17 +29,19 @@ static void __do_accept (NetKit *nk, NKPeer *peer)
 {
     NKPeer *newpeer;
 
-    if (!(newpeer = NK_alloc_peer_with_init (nk, NULL, 0))) {
-    	return;
-    }
-
-    if (!NetIOAccept (&peer->io, &newpeer->io)) {
-        if (nk->delegate && nk->delegate->didAcceptRemoteClient) {
-            nk->delegate->didAcceptRemoteClient (nk, peer, newpeer);
+    DC_object_sync_run (peer, {
+        if ((newpeer = NK_alloc_peer_with_init (nk, NULL, 0))) {
+            if (!NetIOAccept (&peer->io, &newpeer->io)) {
+                if (nk->delegate && 
+                    nk->delegate->didAcceptRemoteClient) {
+                    nk->delegate->didAcceptRemoteClient (nk, 
+                                                         peer, 
+                                                         newpeer);
+                }
+            }
         }
-    }
-
-    DC_object_release ((DC_object_t*)newpeer);
+        DC_object_release ((DC_object_t*)newpeer);
+    });
 }
 
 static void __do_read(NetKit *nk, NKPeer *peer)
@@ -55,49 +57,56 @@ static void __do_read(NetKit *nk, NKPeer *peer)
     nkbuf->iobuf.data = nkbuf->buffer;
     nkbuf->iobuf.size = nkbuf->size;
 
-    nkbuf->length = NetIORead(&peer->io, &nkbuf->iobuf);
-    if (nkbuf->length < 0) {
-        if (nk->delegate && nk->delegate->didFailureToReceiveData) {
-            nk->delegate->didFailureToReceiveData (nk, peer);
-        }
-    } else {
-	    nk->__rd_bytes += nkbuf->length;
-        peer->total_bytes += nkbuf->length;
-        
-        if (nk->delegate && nk->delegate->didSuccessToReceiveData) {
-            if (nk->delegate->didSuccessToReceiveData (nk, peer, nkbuf)) {
-                assert (peer != NULL);
-                NK_buffer_set_peer (nkbuf, peer);
-                DC_object_get ((DC_object_t*)nkbuf);
-                __update_peer (nk, peer);
-		        if (DC_task_queue_run_task (&nk->incoming_tasks, 
-                                            nkbuf, 
-                                            1) != ERR_OK) {
-       	            Wlog ("[NetKit] the incoming queue is full.");
-	                DC_object_release ((DC_object_t*)nkbuf);
+    DC_object_sync_run (peer, {
+        __update_peer (nk, peer);
+        if ((nkbuf->length = NetIORead (&peer->io, 
+                                        &nkbuf->iobuf)) < 0) {
+            if (nk->delegate && 
+                nk->delegate->didFailureToReceiveData) {
+                nk->delegate->didFailureToReceiveData (nk, peer);
+            }
+        } else {
+            nk->__rd_bytes += nkbuf->length;
+            peer->total_bytes += nkbuf->length;
+
+            if (nk->delegate &&
+                nk->delegate->didSuccessToReceiveData) {
+                if (nk->delegate->didSuccessToReceiveData (nk,
+                                                           peer,
+                                                           nkbuf)) {
+                    NK_buffer_set_peer (nkbuf, peer);
+                    if (DC_task_queue_run_task (&nk->incoming_tasks,
+                                  DC_object_get((DC_object_t*)nkbuf), 
+                                  1) != ERR_OK) {
+       	                Wlog ("[NetKit] the incoming queue is full.");
+                        DC_object_release ((DC_object_t*)nkbuf);
+                    }
                 }
             }
         }
-    }
+    });
 
     DC_object_release ((DC_object_t*)nkbuf);
 }
 
 static void __do_process(NetKit *nk, NKPeer *peer, NKBuffer *nkbuf) 
 {
-    nk->__proc_bytes += nkbuf->length;
-    if (nk->delegate && nk->delegate->processData) {
+    DC_object_sync_run (peer, {
+    	nk->__proc_bytes += nkbuf->length;
+    	if (nk->delegate && nk->delegate->processData) {
 	    nk->delegate->processData(nk, peer, nkbuf);
-    }
-    DC_object_release ((DC_object_t*)nkbuf);
+    	}
+    	DC_object_release ((DC_object_t*)nkbuf);
+    });
 }
 
 static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf) 
 {
     nkbuf->iobuf.data = nkbuf->buffer; 
     nkbuf->iobuf.size = nkbuf->length;
-    nkbuf->length = NetIOWrite(&peer->io, &nkbuf->iobuf);
 
+    DC_object_sync_run (peer, {
+    nkbuf->length = NetIOWrite(&peer->io, &nkbuf->iobuf);
     if (nkbuf->length < 0) {
         if (nk->delegate && nk->delegate->didFailureToSendData) {
             nk->delegate->didFailureToSendData (nk, peer, nkbuf);
@@ -110,6 +119,7 @@ static void __do_write (NetKit *nk, NKPeer *peer, NKBuffer *nkbuf)
     }
 
     DC_object_release ((DC_object_t*)nkbuf);
+    });
 }
 
 DC_INLINE void __NK_write_cb (void *user, void *data)
@@ -121,8 +131,8 @@ DC_INLINE void __NK_write_cb (void *user, void *data)
 
 DC_INLINE void __NK_process_cb (void *userdata, void *data)
 {
-	NetKit *nk = userdata;
-	NKBuffer *nkbuf = NULL;
+    NetKit *nk = userdata;
+    NKBuffer *nkbuf = NULL;
 
     nkbuf = (NKBuffer*)data;
     __do_process (nk, nkbuf->peer, nkbuf);
