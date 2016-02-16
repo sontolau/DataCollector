@@ -107,10 +107,14 @@ LLVOID_t *DC_hash_get_all_objects (const DC_hash_t *hash)
     void *saveptr = NULL;
     int i = 0, j=0;
 
-    objects = (LLVOID_t*)calloc (hash->count+1, sizeof (LLVOID_t));
-    for (i=0; i < hash->size; i++) {
+    if (hash->count > 0) {
+        objects = (LLVOID_t*)calloc (hash->count+1, sizeof (LLVOID_t));
+    }
+
+    for (i=0; objects && i < hash->size; i++) {
     	saveptr = NULL;
-    	while ((obj = DC_list_next(&hash->hash_map[i], &saveptr)) && j < hash->count) {
+    	while ((obj = DC_list_next(&hash->hash_map[i], &saveptr)) 
+                && j < hash->count) {
     		objects[j++] = obj;
     	}
     }
@@ -130,7 +134,7 @@ LLVOID_t DC_hash_remove_object (DC_hash_t *hash, DC_key_t key) {
 
     if (list && (elem = __find_hash_elem (hash, key))) {
     	DC_list_remove (list, elem);
-    	hash->count--;
+        //if (hash->count > 0) hash->count--;
     	return elem;
     }
 
