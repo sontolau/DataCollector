@@ -1,6 +1,8 @@
 #include "libdc.h"
 #include "thread.h"
+#include "io.h"
 
+#if 0
 DC_task_manager_t manager;
 static unsigned int count = 0;
 DC_task_queue_t   task_queue;
@@ -40,3 +42,5 @@ void main ()
 
     sleep (10000);
 }
+#endif
+

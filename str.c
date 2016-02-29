@@ -62,3 +62,58 @@ int DC_substr (const char *str, const char *substr, int start)
 
 	return -1;
 }
+
+static inline char *__find_str (char **start, const char *end)
+{
+    register char *ptr = *start;
+
+    while (ptr<end && !(*ptr)) ptr++;
+
+    if (ptr>=end) return NULL;
+
+    *start = (ptr+strlen (ptr));
+
+    return ptr;
+}
+
+char **DC_split_str (char *str, const char *delim, int *numstr)
+{
+    char *ptr = str;
+    int num = 0, i;
+    int szdelim = strlen (delim);
+    int szstr   = strlen (str);
+    char **p = NULL;
+
+    while (*ptr) {
+        if (!strncmp (ptr, delim, szdelim)) {
+            memset (ptr, '\0', szdelim);
+            num++;
+            ptr += szdelim;
+        } else {
+            ptr++;
+        }   
+    }
+
+    if (!(p = calloc (num+1, sizeof (char*)))) {
+        return NULL;
+    }
+
+    for (i=0, ptr=str; i<num && (p[i] = __find_str (&ptr, &str[szstr])); i++);
+    if (numstr) *numstr = i;
+
+    return p;
+}
+
+/*
+int main ()
+{
+   char str[] = ",how,are,you,,good,,,,,love,you";
+   int i;
+   char **p = DC_split_str (str, ",");
+
+   for (i=0; p[i]; i++) {
+      printf ("%s\n", p[i]);
+   }
+
+   return 0;
+}*/

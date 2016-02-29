@@ -20,6 +20,12 @@
 #include <errno.h>
 #include <pthread.h>
 #include <sys/time.h>
+#include <sys/resource.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <netinet/in.h>
+#include <arpa/inet.h>
+#include <fcntl.h>
 #include <assert.h>
 #endif
 
@@ -105,6 +111,12 @@ do {\
 #define DC_free(ptr)      free(ptr)
 
 typedef unsigned long long LLVOID_t;
+#define __block(_tag, _blk) \
+do {\
+    _tag:_blk;\
+} while (0)
+
+#define __goto(_tag) goto _tag
 
 //typedef union {
 //	char char_value;

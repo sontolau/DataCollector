@@ -44,7 +44,7 @@ extern int DC_object_is_kind_of (DC_object_t *obj, const char *cls);
 		DC_locker_unlock (&((DC_object_t*)obj)->lock);\
 	} while (0)
 
-//extern void DC_object_destroy (DC_object_t *obj);
+extern void DC_object_destroy (DC_object_t *obj);
 
 extern void DC_object_release (DC_object_t *);
 

@@ -37,14 +37,23 @@ DC_object_t *DC_object_alloc (long size,
         obj->PRI (release) = __release;
         obj->PRI (alloc)   = __alloc;
         obj->PRI (free)    = __free;
-        DC_locker_init (&obj->lock, 0, NULL);
+
+        DC_object_init (obj);
+        //DC_locker_init (&obj->lock, 0, NULL);
     }
 	return obj;
 }
 
 int DC_object_init (DC_object_t *obj)
 {
+    DC_locker_init (&obj->lock, 0, NULL);
+
     return ERR_OK;
+}
+
+void DC_object_destroy (DC_object_t *obj)
+{
+    DC_locker_destroy (&obj->lock);
 }
 
 int DC_object_is_kind_of(DC_object_t *obj, const char *cls) {
@@ -56,7 +65,8 @@ void DC_object_release(DC_object_t *obj) {
 	if (obj) {
 		obj->refcount--;
 		if (obj->refcount <= 0) {
-			DC_locker_destroy (&obj->lock);
+            DC_object_destroy (obj);
+			//DC_locker_destroy (&obj->lock);
             if (obj->PRI (release)) obj->PRI (release) (obj, obj->data);
             obj->PRI (free) (obj->class_name, obj, obj->data);
 		}

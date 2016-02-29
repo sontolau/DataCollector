@@ -75,4 +75,6 @@ extern void DC_keyval_array_get_string3 (const DC_keyval_t *kvs,
 						   	   	  	  	  char **kvstr,
 						   	   	  	  	  const char *sep);
 
+extern void DC_keyval_array_release (DC_keyval_t*, void (cb)(DC_keyval_t*));
+
 #endif

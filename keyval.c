@@ -524,3 +524,14 @@ void DC_keyval_array_get_string3 (const DC_keyval_t *kvs,
 		(*kvstr)[strlen (*kvstr)-szsep] = '\0';
 	}
 }
+
+void DC_keyval_array_release (DC_keyval_t* map, void (cb)(DC_keyval_t *))
+{
+    register DC_keyval_t *maptr = NULL;
+
+    DC_keyval_array_foreach (maptr, map) {
+        if (cb) {
+            cb (maptr);
+        }
+    }
+}
