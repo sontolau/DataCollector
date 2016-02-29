@@ -5,7 +5,7 @@ APPS= tcpserver tcpsender
 OBJS=N_io.o N_netkit.o
 CC=cc
 FLAGS=-Wall -fPIC -g
-INCDIRS=-I./ -I../
+INCDIRS=-I./ -I../ -I/usr/include/libev
 
 all:${LIBNETIO} ${APPS}
 ${LIBNETIO}: ${OBJS}
