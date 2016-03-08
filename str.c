@@ -76,32 +76,55 @@ static inline char *__find_str (char **start, const char *end)
     return ptr;
 }
 
+#define __find_start(p, endptr, delim, dlen) \
+do {\
+    while ((p < endptr) && !strncmp (p, delim, dlen)) {\
+        p += dlen;\
+    }\
+    if (p >= endptr) p = NULL;\
+} while (0)
+
+#define __find_end(p, endptr, delim, dlen) \
+do {\
+    while ((p < endptr) && strncmp (p, delim, dlen)) p++;\
+    if (p >= endptr) p = NULL;\
+} while (0)
+
 char **DC_split_str (char *str, const char *delim, int *numstr)
 {
-    char *ptr = str;
+    char *ptr = str, *endptr = NULL;
     int num = 0, i;
     int szdelim = strlen (delim);
-    int szstr   = strlen (str);
-    char **p = NULL;
-
-    while (*ptr) {
-        if (!strncmp (ptr, delim, szdelim)) {
-            memset (ptr, '\0', szdelim);
+    char **p1 = NULL, **p2 = NULL;
+    endptr = ptr + strlen (str);
+    
+    while (ptr < endptr) {
+        __find_start (ptr, endptr, delim, szdelim);
+        if (ptr) {
             num++;
+            p2 = p1;
+            p1 = realloc (NULL, (num+1) * sizeof (char*));
+            for (i=0; p2 && i<num-1; i++) {
+                p1[i] = p2[i];
+            }
+            if (p2) free (p2);
+            p1[num-1] = ptr;
+        } else {
+            break;
+        }
+        
+        __find_end (ptr, endptr, delim, szdelim);
+        if (ptr) {
+            *ptr = '\0';
             ptr += szdelim;
         } else {
-            ptr++;
-        }   
+            break;
+        }
     }
 
-    if (!(p = calloc (num+1, sizeof (char*)))) {
-        return NULL;
-    }
+    if (numstr) *numstr = num;
 
-    for (i=0, ptr=str; i<num && (p[i] = __find_str (&ptr, &str[szstr])); i++);
-    if (numstr) *numstr = i;
-
-    return p;
+    return p1;
 }
 
 /*

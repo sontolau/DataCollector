@@ -3,6 +3,8 @@
 
 #define ENV_LOG_SIZE "MAX_LOG_SIZE"
 
+extern int DC_log_open (const char *path, unsigned int maxsz);
+
 extern void  DC_log (const char *tag, const char *fmt, ...);
 
 #define Dlog(fmt, ...) DC_log("DEBUG", fmt,  ## __VA_ARGS__)

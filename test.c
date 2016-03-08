@@ -44,3 +44,15 @@ void main ()
 }
 #endif
 
+void main (int argc, char *argv[])
+{
+    int num = 0;
+    char **p = DC_split_str (argv[1], argv[2], &num);
+    int i;
+
+    for (i=0; p && i < num; i++) {
+        printf ("%d: %s\n", i, p[i]);
+    }
+
+    if (p) free (p);
+}

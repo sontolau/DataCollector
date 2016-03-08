@@ -8,6 +8,7 @@ typedef struct _DC_object {
     int refcount;
     char class_name[SZ_CLASS_NAME+1];
     void *data;
+    int  tag;
     DC_locker_t lock;
     struct _DC_object* (*PRI (alloc)) (const char*, unsigned int, void*);
     void (*PRI (free)) (const char*, struct _DC_object *obj, void*);
@@ -31,7 +32,11 @@ extern DC_object_t *DC_object_alloc (long size,
 
 extern int DC_object_init (DC_object_t *obj);
 
-extern DC_object_t *DC_object_get (DC_object_t *obj);
+#define DC_object_set_tag(_obj, _tag) (_obj->tag = _tag)
+#define DC_object_get_tag(_obj)       (_obj->tag)
+
+extern DC_object_t *DC_object_incref (DC_object_t *obj);
+#define DC_object_get(obj) DC_object_incref((DC_object_t*)obj)
 
 extern int DC_object_get_refcount (DC_object_t *obj);
 
@@ -39,14 +44,15 @@ extern int DC_object_is_kind_of (DC_object_t *obj, const char *cls);
 
 #define DC_object_sync_run(obj, block) \
 	do {\
-		DC_locker_lock (&((DC_object_t*)obj)->lock, 0, 1);\
+		DC_locker_lock (&(((DC_object_t*)obj)->lock), 0, 1);\
 		block;\
-		DC_locker_unlock (&((DC_object_t*)obj)->lock);\
+		DC_locker_unlock (&(((DC_object_t*)obj)->lock));\
 	} while (0)
 
 extern void DC_object_destroy (DC_object_t *obj);
 
-extern void DC_object_release (DC_object_t *);
+extern void DC_object_decref (DC_object_t *);
+#define DC_object_release(obj) DC_object_decref((DC_object_t*)obj)
 
 #define DC_OBJ_EXTENDS(__class)   __class super
 

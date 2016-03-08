@@ -1,4 +1,5 @@
 #include "socket.h"
+#include "log.h"
 
 DC_INLINE int __v4_set_options (DC_socket_t *sk, int op, void *arg, int szarg)
 {
@@ -7,9 +8,12 @@ DC_INLINE int __v4_set_options (DC_socket_t *sk, int op, void *arg, int szarg)
 
 	switch (op) {
 	case SOCK_CTL_BIND:
-		return bind (sk->super.fd,
-				     &sk->sockaddr.sa,
-				     sizeof (sk->sockaddr.socklen));
+		sk->__bind_flag = (bind (sk->super.fd,
+				           &sk->sockaddr.sa,
+				           sk->sockaddr.socklen)?0:1);
+
+        return (sk->__bind_flag?0: -1);
+
 	case SOCK_CTL_SET_OPT: {
 		optptr = (DC_sockopt_t*)arg;
 		for (i=0; i<(int)(szarg/sizeof (DC_sockopt_t)); i++) {
@@ -33,7 +37,7 @@ DC_INLINE int __v4_set_options (DC_socket_t *sk, int op, void *arg, int szarg)
 	case SOCK_CTL_CONNECT:
 		return connect (sk->super.fd,
 				        &sk->sockaddr.sa,
-				        sizeof (sk->sockaddr.socklen));
+				        sk->sockaddr.socklen);
 		break;
 	}
 	return 0;
@@ -42,6 +46,10 @@ DC_INLINE int __v4_set_options (DC_socket_t *sk, int op, void *arg, int szarg)
 DC_INLINE int udpv4_open (DC_socket_t *sk, const char *addr, int port)
 {
 	int skfd;
+
+    if (DC_io_init ((DC_io_t*)sk) < 0) {
+        return -1;
+    }
 
     if (port == 0) {
         sk->sockaddr.su.sun_family = AF_UNIX;
@@ -58,13 +66,20 @@ DC_INLINE int udpv4_open (DC_socket_t *sk, const char *addr, int port)
     	skfd = socket (AF_INET, SOCK_DGRAM, 0);
     }
 
-    if (skfd < 0) return -1;
-    return DC_io_init ((DC_io_t*)sk, skfd, NULL, NULL);
+    if (skfd < 0) {
+        DC_io_destroy ((DC_io_t*)sk);
+        return -1;
+    }
+
+    DC_io_set_fd (((DC_io_t*)sk), skfd);
+    
+    return 0;
 }
 
 DC_INLINE int udpv4_ctl (DC_socket_t *sk, int op, void *arg, int szarg)
 {
 	DC_sockbuf_t *skbuf = NULL;
+    ssize_t szbytes = 0;
 
 	switch (op) {
 	case SOCK_CTL_LISTEN:
@@ -74,22 +89,29 @@ DC_INLINE int udpv4_ctl (DC_socket_t *sk, int op, void *arg, int szarg)
 	case SOCK_CTL_RECV: {
 		skbuf = (DC_sockbuf_t*)arg;
 		skbuf->sockaddr.socklen = sizeof (skbuf->sockaddr.addr);
-		return recvfrom (sk->super.fd,
-				         DC_iobuf_get_buffer((DC_iobuf_t*)skbuf),
-				         DC_iobuf_get_size ((DC_iobuf_t*)skbuf),
+		szbytes = recvfrom (sk->super.fd,
+				         DC_iobuf_get_buffer(((DC_iobuf_t*)skbuf)),
+				         DC_iobuf_get_size (((DC_iobuf_t*)skbuf)),
 				         0,
 				         &skbuf->sockaddr.sa,
 				         &skbuf->sockaddr.socklen);
+      
+        sk->total_recv_bytes += (szbytes > 0?szbytes:0);
+        return szbytes;
+
 	} break;
 	case SOCK_CTL_SEND:
 		skbuf = (DC_sockbuf_t*)arg;
 		skbuf->sockaddr.socklen = sizeof (skbuf->sockaddr.addr);
-		return sendto (sk->super.fd,
-				       DC_iobuf_get_buffer((DC_iobuf_t*)skbuf),
-				       DC_iobuf_get_size ((DC_iobuf_t*)skbuf),
+		szbytes = sendto (sk->super.fd,
+				       DC_iobuf_get_buffer(((DC_iobuf_t*)skbuf)),
+				       DC_iobuf_get_size (((DC_iobuf_t*)skbuf)),
 				       0,
 				       &skbuf->sockaddr.sa,
 				       skbuf->sockaddr.socklen);
+        sk->total_send_bytes += (szbytes > 0?szbytes:0);
+        
+        return szbytes;
 		break;
 	default:
 		return __v4_set_options (sk, op, arg, szarg);
@@ -101,11 +123,17 @@ DC_INLINE int udpv4_ctl (DC_socket_t *sk, int op, void *arg, int szarg)
 DC_INLINE void udpv4_close (DC_socket_t *sk)
 {
 	close (sk->super.fd);
+    DC_io_destroy ((DC_io_t*)sk);
 }
 
 DC_INLINE int tcpv4_open (DC_socket_t *sk, const char *addr, int port)
 {
 	int skfd;
+
+    if (DC_io_init ((DC_io_t*)sk) < 0) {
+        return -1;
+    }
+
     if (port == 0) {
         sk->sockaddr.su.sun_family = AF_UNIX;
         strncpy (sk->sockaddr.su.sun_path,
@@ -121,37 +149,58 @@ DC_INLINE int tcpv4_open (DC_socket_t *sk, const char *addr, int port)
     	skfd = socket (AF_INET, SOCK_STREAM, 0);
     }
 
-    if (skfd < 0) return -1;
-    return DC_io_init ((DC_io_t*)sk, skfd, NULL, NULL);
+    if (skfd < 0) {
+        DC_io_destroy ((DC_io_t*)sk);
+        return -1;
+    }
+
+    DC_io_set_fd (((DC_io_t*)sk), skfd);
+    
+    return 0;
 }
 
 DC_INLINE int tcpv4_ctl (DC_socket_t *sk, int op, void *arg, int szarg)
 {
 	DC_sockbuf_t *skbuf = NULL;
     DC_socket_t  *newsk = NULL;
+    int skfd;
+    ssize_t szbytes = 0;
+
 	switch (op) {
 	case SOCK_CTL_LISTEN:
 		return listen (sk->super.fd, *(int*)arg);
 	case SOCK_CTL_ACCEPT: {
 		newsk = (DC_socket_t*)arg;
+        newsk->__handler_ptr = sk->__handler_ptr;
+        
 		newsk->sockaddr.socklen = sizeof (newsk->sockaddr.addr);
-		return (newsk->super.fd = accept (sk->super.fd,
-				                          &newsk->sockaddr.sa,
-				                          &newsk->sockaddr.socklen));
+		if ((skfd = accept (sk->super.fd,
+				          &newsk->sockaddr.sa,
+				          &newsk->sockaddr.socklen)) > 0) {
+            DC_io_set_fd (((DC_io_t*)newsk), skfd);
+            DC_io_set_callback (((DC_io_t*)newsk), DC_io_get_callback(((DC_io_t*)sk)));
+            DC_io_set_userdata (((DC_io_t*)newsk), DC_io_userdata (((DC_io_t*)sk)));
+        }
 	} break;
 	case SOCK_CTL_RECV: {
 		skbuf = (DC_sockbuf_t*)arg;
-		return recv     (sk->super.fd,
-				         DC_iobuf_get_buffer((DC_iobuf_t*)skbuf),
-				         DC_iobuf_get_size ((DC_iobuf_t*)skbuf),
+	    szbytes = recv     (sk->super.fd,
+				         DC_iobuf_get_buffer(((DC_iobuf_t*)skbuf)),
+				         DC_iobuf_get_size (((DC_iobuf_t*)skbuf)),
 				         0);
+        sk->total_recv_bytes += (szbytes > 0?szbytes:0);
+        return szbytes;
+
 	} break;
 	case SOCK_CTL_SEND:
 		skbuf = (DC_sockbuf_t*)arg;
-		return send   (sk->super.fd,
-				       DC_iobuf_get_buffer((DC_iobuf_t*)skbuf),
-				       DC_iobuf_get_size ((DC_iobuf_t*)skbuf),
+		szbytes = send   (sk->super.fd,
+				       DC_iobuf_get_buffer(((DC_iobuf_t*)skbuf)),
+				       DC_iobuf_get_size (((DC_iobuf_t*)skbuf)),
 				       0);
+        sk->total_send_bytes += (szbytes > 0?szbytes:0);
+
+        return szbytes;
 		break;
 	default:
 		return __v4_set_options (sk, op, arg, szarg);
@@ -163,6 +212,7 @@ DC_INLINE int tcpv4_ctl (DC_socket_t *sk, int op, void *arg, int szarg)
 DC_INLINE void tcpv4_close (DC_socket_t *sk)
 {
 	close (sk->super.fd);
+    DC_io_destroy ((DC_io_t*)sk);
 }
 
 
@@ -196,26 +246,31 @@ DC_INLINE void tcpv6_close (DC_socket_t *sk)
 
 static DC_sockproto_t DEFAULT_PROTO_HANDLER[] = {
     [0] = {
+        0,
         NULL,
         NULL,
         NULL,
     },
     [PROTO_UDP] = {
+        PROTO_UDP,
         udpv4_open,
         udpv4_ctl,
         udpv4_close,
     },
     [PROTO_TCP] = {
+        PROTO_TCP,
         tcpv4_open,
         tcpv4_ctl,
         tcpv4_close,
     },
     [PROTO_UDPv6] = {
+        PROTO_UDPv6,
         udpv6_open,
         udpv6_ctl,
         udpv6_close,
     },
     [PROTO_TCPv6] = {
+        PROTO_TCPv6,
         tcpv6_open,
         tcpv6_ctl,
         tcpv6_close,

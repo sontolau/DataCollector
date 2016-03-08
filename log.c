@@ -43,3 +43,29 @@ void DC_log (const char *tag, const char *fmt, ...)
     fflush (fp);
 }
 
+int DC_log_open (const char *path, unsigned int maxsz)
+{
+    FILE *fp = NULL;
+    static char szbuf[100] = {0};
+
+    if (!(fp = fopen (path, "w+"))) {
+        return -1;
+    } else {
+        fseek (fp, 0, SEEK_END);
+    }
+
+    if (maxsz > 0) {
+        snprintf (szbuf, sizeof (szbuf), "%s=%u", ENV_LOG_SIZE, maxsz);
+        putenv (szbuf);
+    }
+
+    fclose (stdin);
+    fclose (stdout);
+    fclose (stderr);
+
+    dup2 (fileno (fp), fileno (stdin));
+    dup2 (fileno (fp), fileno (stdout));
+    dup2 (fileno (fp), fileno (stderr));
+
+    return 0;
+}

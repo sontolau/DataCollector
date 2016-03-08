@@ -47,6 +47,7 @@ typedef struct _DC_sockbuf {
 
 struct _DC_socket;
 typedef struct _DC_sockproto {
+    int proto;
     int (*open) (struct _DC_socket*, const char *addr, int port);
     int (*contrl) (struct _DC_socket*, int op, void *arg, int szarg);
     void (*close) (struct _DC_socket*);
@@ -54,9 +55,15 @@ typedef struct _DC_sockproto {
 
 typedef struct _DC_socket {
     DC_OBJ_EXTENDS (DC_io_t);
+    unsigned int total_recv_bytes;
+    unsigned int total_send_bytes;
+    int __bind_flag;
     DC_sockaddr_t sockaddr;
     DC_sockproto_t* __handler_ptr;
 } DC_socket_t;
+
+#define DC_socket_get_proto(sk)   (sk->__handler_ptr?sk->__handler_ptr->proto:0)
+#define DC_socket_is_bound(sk)   (sk->__bind_flag)
 
 typedef struct _DC_sockopt {
     int level;
@@ -72,6 +79,7 @@ extern int DC_socket_ctl (DC_socket_t *socket, int op, void *arg, int argsz);
 #define DC_socket_set_option(sk, opts, num) DC_socket_ctl(sk, SOCK_CTL_SET_OPT, opts, num*sizeof (DC_sockopt_t))
 #define DC_socket_get_option(sk, opts, num) DC_socket_ctl(sk, SOCK_CTL_GET_OPT, opts, num*sizeof (DC_sockopt_t))
 #define DC_socket_connect(sk)               DC_socket_ctl(sk, SOCK_CTL_CONNECT, NULL, 0)
+#define DC_socket_accept(sk, newsk)         DC_socket_ctl(sk, SOCK_CTL_ACCEPT, newsk, sizeof (DC_socket_t))
 #define DC_socket_send(sk, iobufs)     DC_socket_ctl(sk, SOCK_CTL_SEND, iobufs, sizeof (DC_sockbuf_t))
 #define DC_socket_recv(sk, iobufs)     DC_socket_ctl(sk, SOCK_CTL_RECV, iobufs, sizeof (DC_sockbuf_t))
 extern void DC_socket_destroy (DC_socket_t *socket);
