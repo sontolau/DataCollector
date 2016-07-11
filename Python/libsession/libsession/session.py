@@ -394,6 +394,7 @@ class SessionManager(TaskManager):
         session = Session(peer, sessionkey)
         self.sessions[sessionkey] = session
         if peer.session:
+            logging.info("The session with key %s has existed already, now close and create a new one."%(peer.session.session_key))
             self.closeSession(peer.session)
 
         peer.session = session
@@ -403,6 +404,7 @@ class SessionManager(TaskManager):
             try:
                 self.listener.onConnect(session)
             except Exception as e:
+                logging.error("Closing sessinon due to %s."%(e.message))
                 self.closeSession(session)
                 return None
         logging.info("Created new session %s successfully."%(session.session_key))
@@ -517,7 +519,8 @@ class SessionManager(TaskManager):
                             raise IOError("")
                         else:
                             pass
-                    except IOError:
+                    except IOError as e:
+                        logging.error(e.message)
                         self.closePeer(self.newPeer(fd))
                 self.lock.release()
 
