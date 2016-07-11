@@ -518,7 +518,7 @@ class SessionManager(TaskManager):
                             continue
                         else:
                             pass
-                    except IOError as e:
+                    except Exception as e:
                         logging.error(e.message)
                         self.closePeer(self.newPeer(fd))
                 self.lock.release()
