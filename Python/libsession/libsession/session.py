@@ -328,10 +328,8 @@ class SessionManager(TaskManager):
                 except:
                     pass
                 pass
-
-
         except Exception as e:
-            logging.error(e.message)
+            logging.error("Closing connection due to %s."%(e.message))
             self.closePeer(fd)
             return
 
