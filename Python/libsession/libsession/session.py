@@ -514,7 +514,8 @@ class SessionManager(TaskManager):
                                 if data:
                                     self.write_task('IN', Task(self._handle_in, fd, data))
                         elif ev & select.EPOLLERR or ev & select.EPOLLHUP:
-                            raise IOError("")
+                            logging.error("EPOLLERR or EPOLLHUP event occurred.")
+                            continue
                         else:
                             pass
                     except IOError as e:
