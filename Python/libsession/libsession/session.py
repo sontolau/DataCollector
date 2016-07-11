@@ -1,9 +1,7 @@
 import json
 import logging
-import os
 import socket
 import threading
-from os import kill
 from time import timezone, time
 import time
 
@@ -14,10 +12,11 @@ import signal
 from task import *
 from payload import *
 
-__all__ = ['JsonPayload', 'Listener', 'Peer', 'Request', 'Response', 'Session', 'SessionManager']
-
-
 class JsonPayload(Payload):
+    """
+    an implementation of Paylaod class, which is used to
+    process JSON format data.
+    """
     def payload(self, data, *args, **kwargs):
         if isinstance(data, str):
             raise TypeError()
@@ -29,8 +28,8 @@ class JsonPayload(Payload):
             raise TypeError("")
 
         command = payload.get('command')
-        cseq = payload['cseq']
-        sessionkey = payload['sessionkey']
+        cseq = payload.get('cseq')
+        sessionkey = payload.get('sessionkey')
         args = payload.get('arguments')
 
         if not command:
@@ -46,29 +45,68 @@ class JsonPayload(Payload):
 
 
 class Listener(object):
+    """
+    the listener includes a set of functions called by SessionManager.
+    """
     def onAuthenticate(self, peer, secret_key):
-        return True
+        """
+        the function is used to authenticate a remote connection,
+        if everything is ok, a session key will be returned.
+        :param peer: see Peer for details.
+        :param secret_key: a string used to authenticate.
+        :return: a session key.
+        """
+        return None
 
     def onConnect(self, session):
+        """
+        this callback is called when a session is generated successfully.
+        :param session: an instance of Session object.
+        :return:
+        """
         pass
 
     def onDisconnect(self, session):
+        """
+        called when an existed session will be closed.
+        :param session:
+        :return:
+        """
         pass
 
     def onRequest(self, session, request):
+        """
+        called when an request arrived from remote with an existed session.
+        :param session:
+        :param request: Request object.
+        :return:
+        """
         pass
 
     def onResponseArrived(self, session, response):
+        """
+        called when an response arrived from remote with an existed session.
+        :param session:
+        :param response:
+        :return:
+        """
         pass
 
     def onResponseTimeout(self, session, request):
+        """
+        called when an request from server side is timed out.
+        :param session:
+        :param request:
+        :return:
+        """
         pass
 
 
 class Peer(object):
     def __init__(self, sockfd, address=None):
         self.sock_fd = sockfd
-        self.sessions = []
+        # self.sessions = []
+        self.session = None
         self.last_update = 0
         self.address = address
 
@@ -96,10 +134,21 @@ class Response(Request):
 
 class SessionManager(TaskManager):
     def sendPayload(self, peer, **kwargs):
+        """
+        send payload to remote connection.
+        :param peer:
+        :param kwargs:
+        :return:
+        """
         data = self.payload.serialize(**kwargs)
         self.write_task("OUT", Task(self._handle_out, args=(peer, data)))
 
     def acceptPeer(self, local_fd):
+        """
+        accept a new peer.
+        :param local_fd:
+        :return:
+        """
         new_fd, (host, port) = local_fd.accept()
         logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
         peer = self.newPeer(new_fd)
@@ -122,6 +171,12 @@ class SessionManager(TaskManager):
         peer.last_update = self.counter
 
     def newPeer(self, fd, peer=None):
+        """
+        return an existed peer or create new peer with specific file descriptor.
+        :param fd:
+        :param peer:
+        :return:
+        """
         if isinstance(fd, Peer):
             return fd
         elif isinstance(fd, int):
@@ -145,15 +200,21 @@ class SessionManager(TaskManager):
                 return peer
 
     def closePeer(self, peer):
+        """
+        close remote connection.
+        :param peer:
+        :return:
+        """
         logging.info("Closing connection from %s:%d." % (peer.address[0], peer.address[1]))
         peer = self.newPeer(peer)
         self.epoll.unregister(peer.sock_fd.fileno())
-        try:
-            while len(peer.sessions) > 0:
-                self.closeSession(peer.sessions[0])
-        except:
-            pass
-
+        # try:
+        #     while len(peer.sessions) > 0:
+        #         self.closeSession(peer.sessions[0])
+        # except:
+        #     pass
+        if peer.session:
+            self.closeSession(peer.session)
         try:
             del self.connections[0][peer.sock_fd.fileno()]
         except:
@@ -167,6 +228,11 @@ class SessionManager(TaskManager):
         del peer
 
     def processPeer(self, peer):
+        """
+        read from remote connection and process data.
+        :param peer:
+        :return:
+        """
         peer = self.newPeer(peer)
 
         if not peer:
@@ -186,6 +252,14 @@ class SessionManager(TaskManager):
             raise IOError("")
 
     def sendRequest(self, session, command, arguments, timeout=0):
+        """
+        send request to an existed session.
+        :param session:
+        :param command:
+        :param arguments:
+        :param timeout:
+        :return:
+        """
         request = Request(command=command,
                                          cseq=self.cseq,
                                          sessionkey=session.session_key,
@@ -225,7 +299,7 @@ class SessionManager(TaskManager):
             elif event == "ping":
                 session = self.sessions.get(sessionkey)
                 if session:
-                    self.listener.onPing(session)
+                    # self.listener.onPing(session)
                     self.sendPayload(peer,
                                      cseq=cseq,
                                      errcode="ERR_SUCCESS",
@@ -274,7 +348,7 @@ class SessionManager(TaskManager):
                  payload=JsonPayload,
                  in_queue=(100, 1),
                  out_queue = (100,1),
-                 max_sessions=0,
+                 # max_sessions=0,
                  max_clients=0,
                  wait_timeout=0,
                  max_bytes=0xFFFF):
@@ -290,7 +364,7 @@ class SessionManager(TaskManager):
         self.sessions = {}
         self.connections = [{}, []]
         self.session_list = []
-        self.max_sessions = max_sessions
+        # self.max_sessions = max_sessions
         self.max_clients = max_clients
         self.wait_timeout = wait_timeout
         self.max_bytes = max_bytes
@@ -304,6 +378,12 @@ class SessionManager(TaskManager):
 
     # create new session.
     def createSession(self, peer, sessionkey):
+        """
+        create a new session.
+        :param peer:
+        :param sessionkey:
+        :return:
+        """
         peer = self.newPeer(peer)
 
         # generate new session key.
@@ -313,7 +393,11 @@ class SessionManager(TaskManager):
         # allocate new session.
         session = Session(peer, sessionkey)
         self.sessions[sessionkey] = session
-        peer.sessions.append(session)
+        if peer.session:
+            self.closeSession(peer.session)
+
+        peer.session = session
+        # peer.sessions.append(session)
         # session.secret_key = sessionkey
         if self.listener:
             try:
@@ -325,9 +409,20 @@ class SessionManager(TaskManager):
         return session
 
     def getSession(self, session_key):
+        """
+        return an existed session.
+        if no session found, None will be returned.
+        :param session_key:
+        :return:
+        """
         return self.sessions.get(session_key)
 
     def closeSession(self, session):
+        """
+        close an existed session.
+        :param session:
+        :return:
+        """
         if self.listener:
             self.listener.onDisconnect(session)
 
@@ -335,7 +430,8 @@ class SessionManager(TaskManager):
             del self.sessions[session.session_key]
 
         try:
-            session.peer.sessions.remove(session)
+            session.peer.session=None
+            # session.peer.sessions.remove(session)
         except:
             pass
         logging.info("Closed session %s."%(session.session_key))
@@ -374,6 +470,10 @@ class SessionManager(TaskManager):
     #         self._exit_flag = True
 
     def start(self):
+        """
+        start session manager.
+        :return:
+        """
         super(SessionManager, self).start()
         # create TCP socket server.
         self.epoll = select.epoll()
