@@ -241,7 +241,7 @@ class SessionManager(TaskManager):
         try:
             bufdata = peer.sock_fd.recv(self.max_bytes)
             if len(bufdata) <= 0:
-                raise IOError("")
+                raise IOError("The remote peer has closed.")
 
             self._update_peer(peer)
             logging.debug("C-S: %s" % (str(bufdata)))
