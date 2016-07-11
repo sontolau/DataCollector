@@ -512,7 +512,7 @@ class SessionManager(TaskManager):
                             else:
                                 data = self.processPeer(fd)
                                 if data:
-                                    self.write_task('IN', Task(self._handle_in, args=(fd, data)))
+                                    self.write_task('IN', Task(self._handle_in, fd, data))
                         elif ev & select.EPOLLERR or ev & select.EPOLLHUP:
                             raise IOError("")
                         else:
