@@ -248,8 +248,8 @@ class SessionManager(TaskManager):
 
             self.write_task('IN', Task(self._handle_in,
                                        args=(peer, self.payload.payload(bufdata))))
-        except:
-            raise IOError("")
+        except Exception as e:
+            raise IOError(e.message)
 
     def sendRequest(self, session, command, arguments, timeout=0):
         """
@@ -519,7 +519,7 @@ class SessionManager(TaskManager):
                         else:
                             pass
                     except IOError as e:
-                        logging.error("IO error due to %s."%(e.message))
+                        logging.error(e.message)
                         self.closePeer(self.newPeer(fd))
                 self.lock.release()
 
