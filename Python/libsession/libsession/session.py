@@ -450,8 +450,9 @@ class SessionManager(TaskManager):
             if self.wait_timeout > 0 and self.counter % self.wait_timeout == 0:
                 logging.debug("Checking connection...")
                 for peer in self.connections[1]:
-                    if self.counter - peer.last_update > self.wait_timeout:
-                        logging.info("Closing remote connection due to read timedout.")
+                    expired_seconds = self.counter - peer.last_update
+                    if expired_seconds > self.wait_timeout:
+                        logging.info("Closing remote connection due to read timedout [%d seconds expired]."%(expired_seconds))
                         self.closePeer(peer)
                     else:
                         break
