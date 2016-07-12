@@ -1,7 +1,5 @@
 import json
-import logging
 import socket
-import threading
 from time import timezone, time
 import time
 
@@ -18,14 +16,14 @@ class JsonPayload(Payload):
     process JSON format data.
     """
     def payload(self, data, *args, **kwargs):
-        if isinstance(data, str):
-            raise TypeError()
+        if not isinstance(data, str):
+            raise TypeError("a json-like string is requred.")
 
         return json.loads(data)
 
     def process(self, payload):
-        if isinstance(payload, dict):
-            raise TypeError("")
+        if not isinstance(payload, dict):
+            raise TypeError("the payload must be dict type.")
 
         command = payload.get('command')
         cseq = payload.get('cseq')
@@ -114,7 +112,7 @@ class Peer(object):
 class Session(object):
     def __init__(self, peer, session_key):
         self.session_key = session_key
-        self.create_time = timezone.now
+        self.create_time = time.time()
         self.cseq = 0
         self.peer = peer
 
@@ -141,7 +139,7 @@ class SessionManager(TaskManager):
         :return:
         """
         data = self.payload.serialize(**kwargs)
-        self.write_task("OUT", Task(self._handle_out, args=(peer, data)))
+        self.write_task("OUT", Task(self._handle_out, peer, data))
 
     def acceptPeer(self, local_fd):
         """
@@ -207,7 +205,10 @@ class SessionManager(TaskManager):
         """
         logging.info("Closing connection from %s:%d." % (peer.address[0], peer.address[1]))
         peer = self.newPeer(peer)
-        self.epoll.unregister(peer.sock_fd.fileno())
+        try:
+            self.epoll.unregister(peer.sock_fd.fileno())
+        except Exception as e:
+            logging.error(e.message)
         # try:
         #     while len(peer.sessions) > 0:
         #         self.closeSession(peer.sessions[0])
@@ -246,8 +247,7 @@ class SessionManager(TaskManager):
             self._update_peer(peer)
             logging.debug("C-S: %s" % (str(bufdata)))
 
-            self.write_task('IN', Task(self._handle_in,
-                                       args=(peer, self.payload.payload(bufdata))))
+            self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(bufdata)))
         except Exception as e:
             raise IOError(e.message)
 
@@ -276,12 +276,14 @@ class SessionManager(TaskManager):
         self.cseq += 1
         return request
 
-    def _handle_in(self, fd, payload):
+    def _handle_in(self, peer, payload):
+        # peer = self.newPeer(fd)
+
         try:
-            peer = self.newPeer(fd)
+            # peer = self.newPeer(fd)
             event, cseq, sessionkey, args = self.payload.process(payload)
             if event == "connect":
-                secretkey = args.get('scretkey')
+                secretkey = args.get('secretkey')
                 sessionkey = self.listener.onAuthenticate(peer, secretkey)
                 if not secretkey:
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_AUTHEN_FAILED")
@@ -330,7 +332,7 @@ class SessionManager(TaskManager):
                 pass
         except Exception as e:
             logging.error("Closing connection due to %s."%(e.message))
-            self.closePeer(fd)
+            self.closePeer(peer)
             return
 
     def _handle_out(self, peer, data):
@@ -510,9 +512,9 @@ class SessionManager(TaskManager):
                             if fd == self.sock_fd.fileno():
                                 self.acceptPeer(self.sock_fd)
                             else:
-                                data = self.processPeer(fd)
-                                if data:
-                                    self.write_task('IN', Task(self._handle_in, fd, data))
+                                self.processPeer(fd)
+                                # if data:
+                                #     self.write_task('IN', Task(self._handle_in, fd, data))
                         elif ev & select.EPOLLERR or ev & select.EPOLLHUP:
                             logging.error("EPOLLERR or EPOLLHUP event occurred.")
                             continue

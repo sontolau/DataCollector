@@ -35,7 +35,7 @@ class TaskQueue(object):
                     break
                 task = self._queue.get(True, 1)
                 logging.debug("[Tag] %s: processing task ..." % (self.tag))
-                task.target(task.args)
+                task.target(*task.args)
                 del task
             except Queue.Empty as e:
                 # logging.debug("Checking.")
