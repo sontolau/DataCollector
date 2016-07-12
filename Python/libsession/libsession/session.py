@@ -285,14 +285,14 @@ class SessionManager(TaskManager):
             if event == "connect":
                 secretkey = args.get('secretkey')
                 sessionkey = self.listener.onAuthenticate(peer, secretkey)
-                if not secretkey:
+                if not sessionkey:
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_AUTHEN_FAILED")
 
                 session = self.createSession(peer, sessionkey)
                 if not session:
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_SYSTEM_EXCEPTION")
 
-                session.secretkey = secretkey
+                session.secret_key = secretkey
                 self.sendPayload(peer, cseq=cseq, errcode="ERR_SUCCESS", sessionkey=sessionkey)
             elif event == "disconnect":
                 session = self.getSession(sessionkey)
