@@ -1,0 +1,9 @@
+setup.py
+libsession/__init__.py
+libsession/payload.py
+libsession/session.py
+libsession/task.py
+libsession.egg-info/PKG-INFO
+libsession.egg-info/SOURCES.txt
+libsession.egg-info/dependency_links.txt
+libsession.egg-info/top_level.txt
