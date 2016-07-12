@@ -121,7 +121,7 @@ class Request(object):
     def __init__(self, **kwargs):
         for k in kwargs.keys():
             setattr(self, k, kwargs[k])
-        self.start_time = timezone.now
+        self.start_time = time.time()
 
 
 class Response(Request):
