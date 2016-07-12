@@ -10,11 +10,13 @@ import signal
 from task import *
 from payload import *
 
+
 class JsonPayload(Payload):
     """
     an implementation of Paylaod class, which is used to
     process JSON format data.
     """
+
     def payload(self, data, *args, **kwargs):
         if not isinstance(data, str):
             raise TypeError("a json-like string is requred.")
@@ -46,6 +48,7 @@ class Listener(object):
     """
     the listener includes a set of functions called by SessionManager.
     """
+
     def onAuthenticate(self, peer, secret_key):
         """
         the function is used to authenticate a remote connection,
@@ -181,7 +184,7 @@ class SessionManager(TaskManager):
             try:
                 return self.connections[0][fd]
             except:
-                if self.max_clients>0 and len(self.connections[1]) > self.max_clients:
+                if self.max_clients > 0 and len(self.connections[1]) > self.max_clients:
                     return None
 
                 self.connections[0][fd] = peer
@@ -251,7 +254,7 @@ class SessionManager(TaskManager):
         except Exception as e:
             raise IOError(e.message)
 
-    def sendRequest(self, session, command, arguments, timeout=0):
+    def sendRequest(self, session, command, timeout=0, **arguments):
         """
         send request to an existed session.
         :param session:
@@ -261,9 +264,9 @@ class SessionManager(TaskManager):
         :return:
         """
         request = Request(command=command,
-                                         cseq=self.cseq,
-                                         sessionkey=session.session_key,
-                                         arguments=arguments)
+                          cseq=self.cseq,
+                          sessionkey=session.session_key,
+                          arguments=arguments)
         setattr(request, "session", session)
         setattr(request, "start_time", self.counter)
         setattr(request, "timeout", timeout)
@@ -331,7 +334,7 @@ class SessionManager(TaskManager):
                     pass
                 pass
         except Exception as e:
-            logging.error("Closing connection due to %s."%(e.message))
+            logging.error("Closing connection due to %s." % (e.message))
             self.closePeer(peer)
             return
 
@@ -347,7 +350,7 @@ class SessionManager(TaskManager):
                  listener=Listener,
                  payload=JsonPayload,
                  in_queue=(100, 1),
-                 out_queue = (100,1),
+                 out_queue=(100, 1),
                  # max_sessions=0,
                  max_clients=0,
                  wait_timeout=0,
@@ -394,7 +397,8 @@ class SessionManager(TaskManager):
         session = Session(peer, sessionkey)
         self.sessions[sessionkey] = session
         if peer.session:
-            logging.info("The session with key %s has existed already, now close and create a new one."%(peer.session.session_key))
+            logging.info("The session with key %s has existed already, now close and create a new one." % (
+            peer.session.session_key))
             self.closeSession(peer.session)
 
         peer.session = session
@@ -404,10 +408,10 @@ class SessionManager(TaskManager):
             try:
                 self.listener.onConnect(session)
             except Exception as e:
-                logging.error("Closing sessinon due to %s."%(e.message))
+                logging.error("Closing sessinon due to %s." % (e.message))
                 self.closeSession(session)
                 return None
-        logging.info("Created new session %s successfully."%(session.session_key))
+        logging.info("Created new session %s successfully." % (session.session_key))
         return session
 
     def getSession(self, session_key):
@@ -432,11 +436,11 @@ class SessionManager(TaskManager):
             del self.sessions[session.session_key]
 
         try:
-            session.peer.session=None
+            session.peer.session = None
             # session.peer.sessions.remove(session)
         except:
             pass
-        logging.info("Closed session %s."%(session.session_key))
+        logging.info("Closed session %s." % (session.session_key))
         del session
 
     def _watch_dog(self):
@@ -452,7 +456,8 @@ class SessionManager(TaskManager):
                 for peer in self.connections[1]:
                     expired_seconds = self.counter - peer.last_update
                     if expired_seconds > self.wait_timeout:
-                        logging.info("Closing remote connection due to read timedout [%d seconds expired]."%(expired_seconds))
+                        logging.info(
+                            "Closing remote connection due to read timedout [%d seconds expired]." % (expired_seconds))
                         self.closePeer(peer)
                     else:
                         break
@@ -460,7 +465,7 @@ class SessionManager(TaskManager):
             for r in self.requests.keys():
                 request = self.requests[r]
                 if request.timeout > 0 and self.counter - request.start_time > request.timeout:
-                    logging.info ("Requested (%s:%s) timed out."%(request.command, request.session_key))
+                    logging.info("Requested (%s:%s) timed out." % (request.command, request.session_key))
                     if self.listener:
                         self.listener.onResponseTimeout(request.session, request)
                     del self.requests[r]
@@ -537,8 +542,12 @@ class SessionManager(TaskManager):
 
 if __name__ == "__main__":
     import sys
+
+
     def sig_proc(sig, f):
         sessionManager.stop()
+
+
     logging.basicConfig(level=logging.DEBUG)
 
     sessionManager = SessionManager(address=(sys.argv[1], int(sys.argv[2])))
