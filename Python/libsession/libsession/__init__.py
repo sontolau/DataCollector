@@ -1,4 +1,5 @@
 from .payload import Payload
+from .log import Log
 from .task import (TaskQueue, TaskManager, Task)
 from .session import (Peer, Response, Request,  Listener, SessionManager, Session, JsonPayload)
 
@@ -18,4 +19,5 @@ __all__ = [Payload,
            Request,
            Response,
            Session,
-           SessionManager]
+           SessionManager,
+           Log]

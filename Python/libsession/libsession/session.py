@@ -7,6 +7,7 @@ import select
 
 import signal
 
+from libsession.log import Log
 from task import *
 from payload import *
 
@@ -110,6 +111,7 @@ class Peer(object):
         self.session = None
         self.last_update = 0
         self.address = address
+        self.lock = threading.Lock()
 
 
 class Session(object):
@@ -151,25 +153,38 @@ class SessionManager(TaskManager):
         :return:
         """
         new_fd, (host, port) = local_fd.accept()
-        logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
+        # logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
         peer = self.newPeer(new_fd)
         if not peer:
+            Log.i(event='connect',
+                  remote_host=host,
+                  remote_port=port,
+                  status='failure')
             new_fd.close()
             return
 
         peer.address = (host, port)
         self._update_peer(peer)
         self.epoll.register(new_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
+        Log.i(event='connect',
+              remote_host=host,
+              remote_port=port,
+              status='success')
         return peer
 
     def _update_peer(self, peer):
+        self.lock.acquire()
         try:
             self.connections[1].remove(peer)
         except:
             pass
 
-        self.connections[1].append(peer)
-        peer.last_update = self.counter
+        try:
+            self.connections[1].append(peer)
+            peer.last_update = self.counter
+        except:
+            pass
+        self.lock.release()
 
     def newPeer(self, fd, peer=None):
         """
@@ -181,6 +196,7 @@ class SessionManager(TaskManager):
         if isinstance(fd, Peer):
             return fd
         elif isinstance(fd, int):
+            self.lock.acquire()
             try:
                 return self.connections[0][fd]
             except:
@@ -189,7 +205,11 @@ class SessionManager(TaskManager):
 
                 self.connections[0][fd] = peer
                 return peer
+            finally:
+                self.lock.release()
+
         elif isinstance(fd, socket.socket):
+            self.lock.acquire()
             try:
                 return self.connections[0][fd.fileno()]
             except:
@@ -199,6 +219,8 @@ class SessionManager(TaskManager):
                 peer = Peer(fd)
                 self.connections[0][fd.fileno()] = peer
                 return peer
+            finally:
+                self.lock.release()
 
     def closePeer(self, peer):
         """
@@ -206,29 +228,36 @@ class SessionManager(TaskManager):
         :param peer:
         :return:
         """
-        logging.info("Closing connection from %s:%d." % (peer.address[0], peer.address[1]))
         peer = self.newPeer(peer)
+        peer.lock.acquire()
+        self.lock.acquire()
         try:
-            self.epoll.unregister(peer.sock_fd.fileno())
-        except Exception as e:
-            logging.error(e.message)
-        # try:
-        #     while len(peer.sessions) > 0:
-        #         self.closeSession(peer.sessions[0])
-        # except:
-        #     pass
-        if peer.session:
-            self.closeSession(peer.session)
-        try:
-            del self.connections[0][peer.sock_fd.fileno()]
-        except:
-            pass
-        try:
-            self.connections[1].remove(peer)
-        except:
-            pass
+            try:
+                self.epoll.unregister(peer.sock_fd.fileno())
+            except Exception as e:
+                pass
+            # remove from local collections
+            try:
+                del self.connections[0][peer.sock_fd.fileno()]
+            except:
+                pass
 
-        peer.sock_fd.close()
+            try:
+                self.connections[1].remove(peer)
+            except:
+                pass
+        finally:
+            self.lock.release()
+
+        try:
+            self.closeSession(peer.session)
+            peer.sock_fd.close()
+            Log.i(event='close',
+                remote_host=peer.address[0],
+                remote_port=peer.address[1])
+        finally:
+            peer.lock.release()
+
         del peer
 
     def processPeer(self, peer):
@@ -238,21 +267,25 @@ class SessionManager(TaskManager):
         :return:
         """
         peer = self.newPeer(peer)
-
         if not peer:
             return
-
+        peer.lock.acquire()
         try:
             bufdata = peer.sock_fd.recv(self.max_bytes)
             if len(bufdata) <= 0:
                 raise IOError("The remote peer has closed the connection.")
 
             self._update_peer(peer)
-            logging.debug("C-S: %s" % (str(bufdata)))
-
+            Log.d(event='read',
+                  remote_host=peer.address[0],
+                  remote_port=peer.address[1],
+                  data=str(bufdata),
+                  length=len(bufdata))
             self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(bufdata)))
         except Exception as e:
             raise IOError(e.message)
+        finally:
+            peer.lock.release()
 
     def sendRequest(self, session, command, timeout=0, **arguments):
         """
@@ -275,15 +308,14 @@ class SessionManager(TaskManager):
                          cseq=self.cseq,
                          sessionkey=session.session_key,
                          arguments=arguments)
-        self.requests[self.cseq] = request
+        with self.lock:
+            self.requests[self.cseq] = request
         self.cseq += 1
         return request
 
     def _handle_in(self, peer, payload):
-        # peer = self.newPeer(fd)
-
+        peer.lock.acquire()
         try:
-            # peer = self.newPeer(fd)
             event, cseq, sessionkey, args = self.payload.process(payload)
             if event == "connect":
                 secretkey = args.get('secretkey')
@@ -291,11 +323,11 @@ class SessionManager(TaskManager):
                 if not sessionkey:
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_AUTHEN_FAILED")
 
-                session = self.createSession(peer, sessionkey)
+                session = self.createSession(peer, sessionkey, secretkey)
                 if not session:
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_SYSTEM_EXCEPTION")
 
-                session.secret_key = secretkey
+                # session.secret_key = secretkey
                 self.sendPayload(peer, cseq=cseq, errcode="ERR_SUCCESS", sessionkey=sessionkey)
             elif event == "disconnect":
                 session = self.getSession(sessionkey)
@@ -320,8 +352,8 @@ class SessionManager(TaskManager):
                 else:
                     self.listener.onRequest(session, Request(**args))
             elif event == "response":
-                self.lock.acquire()
-                request = self.requests.get(cseq)
+                with self.lock:
+                    request = self.requests.get(cseq)
                 session = self.getSession(sessionkey)
 
                 if request and session:
@@ -334,16 +366,22 @@ class SessionManager(TaskManager):
                     pass
                 pass
         except Exception as e:
-            logging.error("Closing connection due to %s." % (e.message))
-            self.closePeer(peer)
+            # logging.error("Closing connection due to %s." % (e.message))
             return
+        finally:
+            peer.lock.release()
 
     def _handle_out(self, peer, data):
         try:
             peer.sock_fd.send(data)
-        except:
-            pass
-        pass
+            Log.d(event='send',
+                  remote_host=peer.address[0],
+                  remote_port=peer.address[1],
+                  data=data,
+                  length=len(data))
+        except Exception as e:
+            Log.e(event='send', reason=e.message)
+            self.closePeer(peer)
 
     def __init__(self,
                  address,
@@ -380,7 +418,7 @@ class SessionManager(TaskManager):
         self.payload.manager = self
 
     # create new session.
-    def createSession(self, peer, sessionkey):
+    def createSession(self, peer, sessionkey, secretkey):
         """
         create a new session.
         :param peer:
@@ -388,31 +426,39 @@ class SessionManager(TaskManager):
         :return:
         """
         peer = self.newPeer(peer)
-
         # generate new session key.
         # skey = rand_str(SessionManager.KEY_LEN,
         #                 SessionManager.KEY_CHARACTERS)
 
         # allocate new session.
-        session = Session(peer, sessionkey)
-        self.sessions[sessionkey] = session
-        if peer.session:
-            logging.info("The session with key %s has existed already, now close and create a new one." % (
-            peer.session.session_key))
-            self.closeSession(peer.session)
-
-        peer.session = session
-        # peer.sessions.append(session)
-        # session.secret_key = sessionkey
-        if self.listener:
-            try:
+        self.lock.acquire()
+        session = None
+        try:
+            session = Session(peer, sessionkey)
+            session.secret_key = secretkey
+            if peer.session:
+                self.closeSession(peer.session)
+            else:
+                peer.session = session
+            self.sessions[sessionkey] = session
+            if self.listener:
                 self.listener.onConnect(session)
-            except Exception as e:
-                logging.error("Closing sessinon due to %s." % (e.message))
+            return session
+        except Exception as e:
+            if session:
                 self.closeSession(session)
-                return None
-        logging.info("Created new session %s successfully." % (session.session_key))
-        return session
+            Log.i(event='create session',
+                  status='failure',
+                  reason=e.message)
+            return None
+        finally:
+            Log.i(event='create session',
+                  status='success',
+                  session=session.session_key)
+            self.lock.release()
+            #
+            # logging.info("Created new session %s successfully." % (session.session_key))
+            # return session
 
     def getSession(self, session_key):
         """
@@ -421,7 +467,8 @@ class SessionManager(TaskManager):
         :param session_key:
         :return:
         """
-        return self.sessions.get(session_key)
+        with self.lock:
+            return self.sessions.get(session_key)
 
     def closeSession(self, session):
         """
@@ -429,19 +476,22 @@ class SessionManager(TaskManager):
         :param session:
         :return:
         """
-        if self.listener:
-            self.listener.onDisconnect(session)
+        if not session:
+            return
 
-        if self.sessions.has_key(session.session_key):
-            del self.sessions[session.session_key]
-
+        Log.i(event='close session', session=session.session_key)
+        self.lock.acquire()
         try:
+            if self.listener:
+                self.listener.onDisconnect(session)
+
+            if self.sessions.has_key(session.session_key):
+                del self.sessions[session.session_key]
+
             session.peer.session = None
-            # session.peer.sessions.remove(session)
-        except:
-            pass
-        logging.info("Closed session %s." % (session.session_key))
-        del session
+            del session
+        finally:
+            self.lock.release()
 
     def _watch_dog(self):
         # import time
@@ -449,29 +499,39 @@ class SessionManager(TaskManager):
             time.sleep(1)
             self.counter += 1
 
-            self.lock.acquire()
-
             if self.wait_timeout > 0 and self.counter % self.wait_timeout == 0:
-                logging.debug("Checking connection...")
-                for peer in self.connections[1]:
-                    expired_seconds = self.counter - peer.last_update
+                with self.lock:
+                    peers = self.connections[1]
+
+                for peer in peers:
+                    with peer.lock:
+                        expired_seconds = self.counter - peer.last_update
+
                     if expired_seconds > self.wait_timeout:
-                        logging.info(
-                            "Closing remote connection due to read timedout [%d seconds expired]." % (expired_seconds))
+                        Log.i(event="read",
+                              reason="timed out")
                         self.closePeer(peer)
                     else:
                         break
 
-            for r in self.requests.keys():
-                request = self.requests[r]
-                if request.timeout > 0 and self.counter - request.start_time > request.timeout:
-                    logging.info("Requested (%s:%s) timed out." % (request.command, request.session_key))
-                    if self.listener:
-                        self.listener.onResponseTimeout(request.session, request)
-                    del self.requests[r]
-                    del request
+            with self.lock:
+                keys = self.requests.keys()
 
-            self.lock.release()
+            for r in keys:
+                self.lock.acquire()
+                try:
+                    request = self.requests.get(r)
+                    if request and request.timeout > 0 and self.counter - request.start_time > request.timeout:
+                        if self.listener:
+                            self.listener.onResponseTimeout(request.session, request)
+                        Log.i(event='request',
+                              command=request.command,
+                              session=request.session.session_key,
+                              reason='request timed out')
+                        del self.requests[r]
+                        del request
+                finally:
+                    self.lock.release()
 
     # def _signal_proc(self, sig):
     #     if sig in (signal.SIGINT, signal.SIGTERM):
@@ -511,7 +571,6 @@ class SessionManager(TaskManager):
             if len(ev_fds) <= 0:  # if timedout
                 continue
             else:
-                self.lock.acquire()
                 for fd, ev in ev_fds:
                     try:
                         if ev & select.EPOLLIN:
@@ -528,8 +587,8 @@ class SessionManager(TaskManager):
                             pass
                     except Exception as e:
                         logging.error(e.message)
-                        self.closePeer(self.newPeer(fd))
-                self.lock.release()
+                        Log.i(event='read', reason=e.message)
+                        self.closePeer(fd)
 
         self.watch_dog.join(2)
         self.sock_fd.close()
