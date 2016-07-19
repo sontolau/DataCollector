@@ -253,8 +253,8 @@ class SessionManager(TaskManager):
             self.closeSession(peer.session)
             peer.sock_fd.close()
             Log.i(event='close',
-                  remote_host=peer.address[0],
-                  remote_port=peer.address[1])
+                remote_host=peer.address[0],
+                remote_port=peer.address[1])
         finally:
             peer.lock.release()
 
@@ -328,11 +328,7 @@ class SessionManager(TaskManager):
                     self.sendPayload(peer, cseq=cseq, errcode="ERR_SYSTEM_EXCEPTION")
 
                 # session.secret_key = secretkey
-                self.sendPayload(peer,
-                                 cseq=cseq,
-                                 errcode="ERR_SUCCESS",
-                                 sessionkey=sessionkey,
-                                 arguments={"ping_interval": self.wait_timeout[0]})
+                self.sendPayload(peer, cseq=cseq, errcode="ERR_SUCCESS", sessionkey=sessionkey)
             elif event == "disconnect":
                 session = self.getSession(sessionkey)
                 if session:
@@ -395,7 +391,7 @@ class SessionManager(TaskManager):
                  out_queue=(100, 1),
                  # max_sessions=0,
                  max_clients=0,
-                 wait_timeout=(0, 0),
+                 wait_timeout=0,
                  max_bytes=0xFFFF):
         super(SessionManager, self).__init__(TaskQueue("IN", in_queue[0], in_queue[1]),
                                              TaskQueue("OUT", out_queue[0], out_queue[1]))
@@ -503,7 +499,7 @@ class SessionManager(TaskManager):
             time.sleep(1)
             self.counter += 1
 
-            if self.wait_timeout[0] > 0 and self.counter % self.wait_timeout[0] == 0:
+            if self.wait_timeout > 0 and self.counter % self.wait_timeout == 0:
                 with self.lock:
                     peers = self.connections[1]
 
@@ -511,7 +507,7 @@ class SessionManager(TaskManager):
                     with peer.lock:
                         expired_seconds = self.counter - peer.last_update
 
-                    if expired_seconds > self.wait_timeout[0] * self.wait_timeout[1]:
+                    if expired_seconds > self.wait_timeout:
                         Log.i(event="read",
                               reason="timed out")
                         self.closePeer(peer)
