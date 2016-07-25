@@ -362,17 +362,23 @@ class SessionManager(TaskManager):
             elif event == "response":
                 with self.lock:
                     request = self.requests.get(cseq)
-                session = self.getSession(sessionkey)
+                # session = self.getSession(sessionkey)
 
-                if request and session:
+                if request:
                     response = Response(request, **args)
                     if self.listener:
-                        self.listener.onResponseArrived(session, response)
-                try:
+                        self.listener.onResponseArrived(request.session, response)
+                    with self.lock:
+                        del self.requests[cseq]
                     del request
-                except:
+                else:
                     pass
-                pass
+                    # logging.warning()
+                # try:
+                #     del request
+                # except:
+                #     pass
+                # pass
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
             return
