@@ -32,14 +32,15 @@ class JsonPayload(Payload):
         cseq = payload.get('cseq')
         sessionkey = payload.get('sessionkey')
         args = payload.get('arguments')
+        errcode = payload.get('errcode')
 
         if not command:
-            return "response", cseq, sessionkey, args
+            return "response", cseq, sessionkey, errcode, args
         else:
             if command in ("connect", "disconnect", "ping"):
-                return command, cseq, sessionkey, args
+                return command, cseq, sessionkey, errcode, args
             else:
-                return "request", cseq, sessionkey, args
+                return "request", cseq, sessionkey, errcode, args
 
     def serialize(self, **kwargs):
         return json.dumps(kwargs)
@@ -316,7 +317,7 @@ class SessionManager(TaskManager):
     def _handle_in(self, peer, payload):
         peer.lock.acquire()
         try:
-            event, cseq, sessionkey, args = self.payload.process(payload)
+            event, cseq, sessionkey, errcode, args = self.payload.process(payload)
             if event != "ping":
                 Log.i(event=event,
                       cseq=cseq,
@@ -364,9 +365,12 @@ class SessionManager(TaskManager):
             elif event == "response":
                 with self.lock:
                     request = self.requests.get(cseq)
-                # session = self.getSession(sessionkey)
 
                 if request:
+                    Log.i(command=request.command,
+                          cseq=request.cseq,
+                          sessionkey=request.session.session_key,
+                          errcode=errcode)
                     response = Response(request, **args)
                     if self.listener:
                         self.listener.onResponseArrived(request.session, response)
@@ -540,8 +544,8 @@ class SessionManager(TaskManager):
                     if request and request.timeout > 0 and self.counter - request.start_time > request.timeout:
                         if self.listener:
                             self.listener.onResponseTimeout(request.session, request)
-                        Log.i(event='request',
-                              command=request.command,
+                        Log.i(command=request.command,
+                              cseq=request.cseq,
                               session=request.session.session_key,
                               reason='request timed out')
                         del self.requests[r]
