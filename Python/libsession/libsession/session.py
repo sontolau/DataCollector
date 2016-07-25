@@ -311,7 +311,7 @@ class SessionManager(TaskManager):
                          arguments=arguments)
         with self.lock:
             self.requests[self.cseq] = request
-        self.cseq += 1
+            self.cseq += 1
         return request
 
     def _handle_in(self, peer, payload):
@@ -364,7 +364,7 @@ class SessionManager(TaskManager):
                     self.listener.onRequest(session, Request(**args))
             elif event == "response":
                 with self.lock:
-                    request = self.requests.get(cseq)
+                    request = self.requests.pop(cseq, None)
 
                 if request:
                     Log.i(command=request.command,
@@ -374,17 +374,11 @@ class SessionManager(TaskManager):
                     response = Response(request, **args)
                     if self.listener:
                         self.listener.onResponseArrived(request.session, response)
-                    with self.lock:
-                        del self.requests[cseq]
+
                     del request
+                    del response
                 else:
                     pass
-                    # logging.warning()
-                    # try:
-                    #     del request
-                    # except:
-                    #     pass
-                    # pass
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
             return
