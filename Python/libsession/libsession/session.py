@@ -11,6 +11,7 @@ from libsession.log import Log
 from task import *
 from payload import *
 
+
 class JsonPayload(Payload):
     """
     an implementation of Paylaod class, which is used to
@@ -316,10 +317,11 @@ class SessionManager(TaskManager):
         peer.lock.acquire()
         try:
             event, cseq, sessionkey, args = self.payload.process(payload)
-            Log.i(event=event,
-                  cseq=cseq,
-                  sessionkey=sessionkey,
-                  arguments=args)
+            if event != "ping":
+                Log.i(event=event,
+                      cseq=cseq,
+                      sessionkey=sessionkey,
+                      arguments=args)
 
             if event == "connect":
                 secretkey = args.get('secretkey')
@@ -374,11 +376,11 @@ class SessionManager(TaskManager):
                 else:
                     pass
                     # logging.warning()
-                # try:
-                #     del request
-                # except:
-                #     pass
-                # pass
+                    # try:
+                    #     del request
+                    # except:
+                    #     pass
+                    # pass
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
             return
