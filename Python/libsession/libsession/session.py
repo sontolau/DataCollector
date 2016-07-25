@@ -11,7 +11,6 @@ from libsession.log import Log
 from task import *
 from payload import *
 
-
 class JsonPayload(Payload):
     """
     an implementation of Paylaod class, which is used to
@@ -276,11 +275,11 @@ class SessionManager(TaskManager):
                 raise IOError("The remote peer has closed the connection.")
 
             self._update_peer(peer)
-            Log.d(event='read',
-                  remote_host=peer.address[0],
-                  remote_port=peer.address[1],
-                  data=str(bufdata),
-                  length=len(bufdata))
+            # Log.d(event='read',
+            #       remote_host=peer.address[0],
+            #       remote_port=peer.address[1],
+            #       data=str(bufdata),
+            #       length=len(bufdata))
             self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(bufdata)))
         except Exception as e:
             raise IOError(e.message)
@@ -317,6 +316,11 @@ class SessionManager(TaskManager):
         peer.lock.acquire()
         try:
             event, cseq, sessionkey, args = self.payload.process(payload)
+            Log.i(event=event,
+                  cseq=cseq,
+                  sessionkey=sessionkey,
+                  arguments=args)
+
             if event == "connect":
                 secretkey = args.get('secretkey')
                 sessionkey = self.listener.onAuthenticate(peer, secretkey)
