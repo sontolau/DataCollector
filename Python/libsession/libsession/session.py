@@ -131,9 +131,10 @@ class Request(object):
 
 
 class Response(Request):
-    def __init__(self, request, **kwargs):
+    def __init__(self, request, errcode, **kwargs):
         super(Response, self).__init__(**kwargs)
         self.request = request
+        self.errcode = errcode
 
 
 class SessionManager(TaskManager):
@@ -371,7 +372,11 @@ class SessionManager(TaskManager):
                           cseq=request.cseq,
                           sessionkey=request.session.session_key,
                           errcode=errcode)
-                    response = Response(request, **args)
+                    if args:
+                        response = Response(request, errcode, **args)
+                    else:
+                        response = Response(request, errcode)
+
                     if self.listener:
                         self.listener.onResponseArrived(request.session, response)
 
