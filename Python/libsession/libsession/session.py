@@ -132,10 +132,9 @@ class Request(object):
 
 class Response(Request):
     def __init__(self, request, errcode, **kwargs):
-        super(Response, self).__init__(**kwargs)
-        self.request = request
-        self.errcode = errcode
-
+        super(Response, self).__init__(request=request,
+                                       errcode=errcode,
+                                       arguments=kwargs)
 
 class SessionManager(TaskManager):
     def sendPayload(self, peer, **kwargs):

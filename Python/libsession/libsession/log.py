@@ -7,9 +7,9 @@ class Log(object):
         info = ''
         for k in kwargs.keys():
             if len(info) > 0:
-                info = '{0}\t{1}=\"{2}\"'.format(info, str(k).upper(), kwargs[k])
+                info = '{0} {1}=\"{2}\"'.format(info, str(k), kwargs[k])
             else:
-                info = '{0}=\"{1}\"'.format(str(k).upper(), kwargs[k])
+                info = '{0}=\"{1}\"'.format(str(k), kwargs[k])
         info += '\n'
 
         return info
