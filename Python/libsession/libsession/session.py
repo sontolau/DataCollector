@@ -456,8 +456,8 @@ class SessionManager(TaskManager):
             session.secret_key = secretkey
             if peer.session:
                 self.closeSession(peer.session)
-            else:
-                peer.session = session
+
+            peer.session = session
             self.sessions[sessionkey] = session
             if self.listener:
                 self.listener.onConnect(session)
