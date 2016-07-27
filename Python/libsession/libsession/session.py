@@ -31,7 +31,7 @@ class JsonPayload(Payload):
         command = payload.get('command')
         cseq = payload.get('cseq')
         sessionkey = payload.get('sessionkey')
-        args = payload.get('arguments')
+        args = payload.get('arguments', {})
         errcode = payload.get('errcode')
 
         if not command:
@@ -75,6 +75,9 @@ class Listener(object):
         :param session:
         :return:
         """
+        pass
+
+    def onPing(self, session, **kwargs):
         pass
 
     def onRequest(self, session, request):
@@ -347,7 +350,7 @@ class SessionManager(TaskManager):
             elif event == "ping":
                 session = self.sessions.get(sessionkey)
                 if session:
-                    # self.listener.onPing(session)
+                    self.listener.onPing(session, **args)
                     self.sendPayload(peer,
                                      cseq=cseq,
                                      errcode="ERR_SUCCESS",
@@ -371,11 +374,7 @@ class SessionManager(TaskManager):
                           cseq=request.cseq,
                           sessionkey=request.session.session_key,
                           errcode=errcode)
-                    if args:
-                        response = Response(request, errcode, **args)
-                    else:
-                        response = Response(request, errcode)
-
+                    response = Response(request, errcode, **args)
                     if self.listener:
                         self.listener.onResponseArrived(request.session, response)
 
