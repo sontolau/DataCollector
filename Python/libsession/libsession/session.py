@@ -37,10 +37,10 @@ class JsonPayload(Payload):
         if not command:
             return "response", cseq, sessionkey, errcode, args
         else:
-            if command in ("connect", "disconnect", "ping"):
-                return command, cseq, sessionkey, errcode, args
-            else:
-                return "request", cseq, sessionkey, errcode, args
+            # if command in ("connect", "disconnect", "ping"):
+            #     return command, cseq, sessionkey, errcode, args
+            # else:
+            return command, cseq, sessionkey, errcode, args
 
     def serialize(self, **kwargs):
         return json.dumps(kwargs)
@@ -127,17 +127,27 @@ class Session(object):
 
 
 class Request(object):
-    def __init__(self, **kwargs):
-        for k in kwargs.keys():
-            setattr(self, k, kwargs[k])
-        self.start_time = time.time()
+    def __init__(self, command, session, cseq, **arguments):
+        self.command = command
+        self.session = session
+        self.cseq = cseq
+        self.arguments = arguments
+        #
+        # for k in kwargs.keys():
+        #     setattr(self, k, kwargs[k])
+        # self.start_time = time.time()
 
 
-class Response(Request):
-    def __init__(self, request, errcode, **kwargs):
-        super(Response, self).__init__(request=request,
-                                       errcode=errcode,
-                                       arguments=kwargs)
+class Response(object):
+    def __init__(self, request, errcode, arguments):
+        self.request = request
+        self.errcode = errcode
+        self.arguments = arguments
+
+        # super(Response, self).__init__(request=request,
+        #                                errcode=errcode,
+        #                                arguments=kwargs)
+
 
 class SessionManager(TaskManager):
     def sendPayload(self, peer, **kwargs):
@@ -280,11 +290,6 @@ class SessionManager(TaskManager):
                 raise IOError("The remote peer has closed the connection.")
 
             self._update_peer(peer)
-            # Log.d(event='read',
-            #       remote_host=peer.address[0],
-            #       remote_port=peer.address[1],
-            #       data=str(bufdata),
-            #       length=len(bufdata))
             self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(bufdata)))
         except Exception as e:
             raise IOError(e.message)
@@ -302,9 +307,9 @@ class SessionManager(TaskManager):
         """
         request = Request(command=command,
                           cseq=self.cseq,
-                          sessionkey=session.session_key,
+                          session = session,
                           arguments=arguments)
-        setattr(request, "session", session)
+
         setattr(request, "start_time", self.counter)
         setattr(request, "timeout", timeout)
         self.sendPayload(session.peer,
@@ -312,10 +317,18 @@ class SessionManager(TaskManager):
                          cseq=self.cseq,
                          sessionkey=session.session_key,
                          arguments=arguments)
+
         with self.lock:
             self.requests[self.cseq] = request
             self.cseq += 1
         return request
+
+    def sendReply(self, request, errcode, **arguments):
+        self.sendPayload(request.session.peer,
+                         errcode=errcode,
+                         cseq=request.cseq,
+                         sessionkey=request.session.session_key,
+                         arguments=arguments)
 
     def _handle_in(self, peer, payload):
         peer.lock.acquire()
@@ -359,12 +372,12 @@ class SessionManager(TaskManager):
                     self.sendPayload(peer,
                                      cseq=cseq,
                                      errcode="ERR_SESSION_NOT_FOUND")
-            elif event == "request":
-                session = self.sessions.get(sessionkey)
-                if not session:
-                    self.sendPayload(peer, cseq=cseq, errcode="ERR_SESSION_NOT_FOUND")
-                else:
-                    self.listener.onRequest(session, Request(**args))
+            # elif event == "request":
+            #     session = self.sessions.get(sessionkey)
+            #     if not session:
+            #         self.sendPayload(peer, cseq=cseq, errcode="ERR_SESSION_NOT_FOUND")
+            #     else:
+            #         self.listener.onRequest(session, Request(command, session, cseq, **args))
             elif event == "response":
                 with self.lock:
                     request = self.requests.pop(cseq, None)
@@ -382,6 +395,12 @@ class SessionManager(TaskManager):
                     del response
                 else:
                     pass
+            else:
+                session = self.sessions.get(sessionkey)
+                if not session:
+                    self.sendPayload(peer, cseq=cseq, errcode="ERR_SESSION_NOT_FOUND")
+                else:
+                    self.listener.onRequest(session, Request(event, session, cseq, **args))
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
             return
