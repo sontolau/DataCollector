@@ -25,16 +25,16 @@ class JsonPayload(Payload):
         if not isinstance(payload, dict):
             raise TypeError("the payload must be dict type.")
 
-        command = payload.get('command')
+        command = payload.get('command', None)
         cseq = payload.get('cseq')
         sessionkey = payload.get('sessionkey')
         args = payload.get('arguments', {})
         errcode = payload.get('errcode')
 
-        if not command:
-            return None, cseq, sessionkey, errcode, args
-        else:
-            return command, cseq, sessionkey, errcode, args
+        # if not command:
+        #     return None, cseq, sessionkey, errcode, args
+        # else:
+        return command, cseq, sessionkey, errcode, args
 
     def serialize(self, **kwargs):
         return json.dumps(kwargs)
@@ -360,7 +360,28 @@ class SessionManager(TaskManager):
 
         try:
             event, cseq, sessionkey, errcode, args = self.payload.process(payload)
-            if event == "connect":
+            if event is None:
+                with self.lock:
+                    request = self.requests.pop(cseq, None)
+                if request:
+                    response = Response(request, errcode, **args)
+                    if hasattr(request, "_sync_lock"):
+                        request.response = response
+                        try:
+                            request._sync_lock.release()
+                        except:
+                            pass
+                    else:
+                        try:
+                            if self.listener:
+                                self.listener.onResponseArrived(request.session, response)
+                            del request
+                            del response
+                        except:
+                            pass
+                else:
+                    pass
+            elif event == "connect":
                 secretkey = args.get('secretkey')
                 sessionkey = self.listener.onAuthenticate(peer, secretkey)
                 if not sessionkey:
@@ -392,32 +413,6 @@ class SessionManager(TaskManager):
                     self.sendPayload(peer,
                                      cseq=cseq,
                                      errcode="ERR_SESSION_NOT_FOUND")
-            elif event is None:
-                with self.lock:
-                    request = self.requests.pop(cseq, None)
-
-                if request:
-                    # Log.i(command=request.command,
-                    #       cseq=request.cseq,
-                    #       sessionkey=request.session.session_key,
-                    #       errcode=errcode)
-                    response = Response(request, errcode, **args)
-                    if hasattr(request, "_sync_lock"):
-                        request.response = response
-                        try:
-                            request._sync_lock.release()
-                        except:
-                            pass
-                    else:
-                        try:
-                            if self.listener:
-                                self.listener.onResponseArrived(request.session, response)
-                            del request
-                            del response
-                        except:
-                            pass
-                else:
-                    pass
             else:
                 session = self.sessions.get(sessionkey)
                 if not session:
@@ -426,13 +421,12 @@ class SessionManager(TaskManager):
                     self.listener.onRequest(session, Request(event, session, cseq, **args))
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
-            traceback.print_stack()
+            traceback.print_exc()
             Log.e(__package__,
                   event=event,
                   object=self.__class__.__name__,
                   result="failure",
                   reason=e.message)
-            return
         finally:
             peer.lock.release()
 
