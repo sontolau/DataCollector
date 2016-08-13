@@ -1,13 +1,9 @@
 import json
 import socket
-from time import timezone, time
+from time import time
 import time
-
 import select
-
 import signal
-
-from libsession.log import Log
 from task import *
 from payload import *
 
@@ -35,11 +31,8 @@ class JsonPayload(Payload):
         errcode = payload.get('errcode')
 
         if not command:
-            return "response", cseq, sessionkey, errcode, args
+            return None, cseq, sessionkey, errcode, args
         else:
-            # if command in ("connect", "disconnect", "ping"):
-            #     return command, cseq, sessionkey, errcode, args
-            # else:
             return command, cseq, sessionkey, errcode, args
 
     def serialize(self, **kwargs):
@@ -170,7 +163,9 @@ class SessionManager(TaskManager):
         # logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
         peer = self.newPeer(new_fd)
         if not peer:
-            Log.i(event='connect',
+            Log.i(__package__,
+                  event='connect',
+                  object="session",
                   remote_host=host,
                   remote_port=port,
                   status='failure')
@@ -180,7 +175,9 @@ class SessionManager(TaskManager):
         peer.address = (host, port)
         self._update_peer(peer)
         self.epoll.register(new_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
-        Log.i(event='connect',
+        Log.i(__package__,
+              event='connect',
+              object=self.__class__.__name__,
               remote_host=host,
               remote_port=port,
               status='success')
@@ -266,7 +263,9 @@ class SessionManager(TaskManager):
         try:
             self.closeSession(peer.session)
             peer.sock_fd.close()
-            Log.i(event='close',
+            Log.i(__package__,
+                  event='disconnect',
+                  object=self.__class__.__name__,
                   remote_host=peer.address[0],
                   remote_port=peer.address[1])
         finally:
@@ -296,7 +295,7 @@ class SessionManager(TaskManager):
         finally:
             peer.lock.release()
 
-    def sendRequest(self, session, command, timeout=0, **arguments):
+    def sendRequest(self, session, command, timeout=0, sync=False, **arguments):
         """
         send request to an existed session.
         :param session:
@@ -307,7 +306,7 @@ class SessionManager(TaskManager):
         """
         request = Request(command=command,
                           cseq=self.cseq,
-                          session = session,
+                          session=session,
                           arguments=arguments)
 
         setattr(request, "start_time", self.counter)
@@ -321,7 +320,31 @@ class SessionManager(TaskManager):
         with self.lock:
             self.requests[self.cseq] = request
             self.cseq += 1
+
+        if sync:
+            request._sync_lock = threading.Lock()
+            request._sync_lock.acquire()
+
         return request
+
+    def waitForReply(self, request, timeout=0):
+        if not hasattr(request, '_sync_lock'):
+            raise ReferenceError("")
+
+        if not request._sync_lock.acquire(True, timeout):
+            return None
+
+        if hasattr(request, 'response'):
+            resp = getattr(request, 'response')
+        else:
+            resp = None
+        try:
+            del request._sync_lock
+            del request
+        except:
+            pass
+
+        return resp
 
     def sendReply(self, request, errcode, **arguments):
         self.sendPayload(request.session.peer,
@@ -332,14 +355,10 @@ class SessionManager(TaskManager):
 
     def _handle_in(self, peer, payload):
         peer.lock.acquire()
+        event = None
+
         try:
             event, cseq, sessionkey, errcode, args = self.payload.process(payload)
-            if event != "ping":
-                Log.i(event=event,
-                      cseq=cseq,
-                      sessionkey=sessionkey,
-                      arguments=args)
-
             if event == "connect":
                 secretkey = args.get('secretkey')
                 sessionkey = self.listener.onAuthenticate(peer, secretkey)
@@ -372,27 +391,30 @@ class SessionManager(TaskManager):
                     self.sendPayload(peer,
                                      cseq=cseq,
                                      errcode="ERR_SESSION_NOT_FOUND")
-            # elif event == "request":
-            #     session = self.sessions.get(sessionkey)
-            #     if not session:
-            #         self.sendPayload(peer, cseq=cseq, errcode="ERR_SESSION_NOT_FOUND")
-            #     else:
-            #         self.listener.onRequest(session, Request(command, session, cseq, **args))
-            elif event == "response":
+            elif event is None:
                 with self.lock:
                     request = self.requests.pop(cseq, None)
 
                 if request:
-                    Log.i(command=request.command,
-                          cseq=request.cseq,
-                          sessionkey=request.session.session_key,
-                          errcode=errcode)
+                    # Log.i(command=request.command,
+                    #       cseq=request.cseq,
+                    #       sessionkey=request.session.session_key,
+                    #       errcode=errcode)
                     response = Response(request, errcode, **args)
-                    if self.listener:
-                        self.listener.onResponseArrived(request.session, response)
-
-                    del request
-                    del response
+                    if hasattr(request, "_sync_lock"):
+                        request.response = response
+                        try:
+                            request._sync_lock.release()
+                        except:
+                            pass
+                    else:
+                        try:
+                            if self.listener:
+                                self.listener.onResponseArrived(request.session, response)
+                            del request
+                            del response
+                        except:
+                            pass
                 else:
                     pass
             else:
@@ -403,6 +425,11 @@ class SessionManager(TaskManager):
                     self.listener.onRequest(session, Request(event, session, cseq, **args))
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
+            Log.e(__package__,
+                  event=event,
+                  object=self.__class__.__name__,
+                  result="failure",
+                  reason=e.message)
             return
         finally:
             peer.lock.release()
@@ -410,13 +437,8 @@ class SessionManager(TaskManager):
     def _handle_out(self, peer, data):
         try:
             peer.sock_fd.send(data)
-            Log.d(event='send',
-                  remote_host=peer.address[0],
-                  remote_port=peer.address[1],
-                  data=data,
-                  length=len(data))
         except Exception as e:
-            Log.e(event='send', reason=e.message)
+            Log.e(__package__, event='send', log=e.message)
             self.closePeer(peer)
 
     def __init__(self,
@@ -483,18 +505,19 @@ class SessionManager(TaskManager):
         except Exception as e:
             if session:
                 self.closeSession(session)
-            Log.i(event='create session',
-                  status='failure',
+            Log.e(__package__,
+                  event="open",
+                  object=self.__class__.__name__,
+                  result='failure',
                   reason=e.message)
             return None
         finally:
-            Log.i(event='create session',
+            Log.i(__package__,
+                  event='open',
+                  object=self.__class__.__name__,
                   status='success',
-                  session=session.session_key)
+                  session_key=session.session_key)
             self.lock.release()
-            #
-            # logging.info("Created new session %s successfully." % (session.session_key))
-            # return session
 
     def getSession(self, session_key):
         """
@@ -515,7 +538,11 @@ class SessionManager(TaskManager):
         if not session:
             return
 
-        Log.i(event='close session', session=session.session_key)
+        Log.i(__package__,
+              event='close',
+              object=self.__class__.__name__,
+              session_key=session.session_key)
+
         self.lock.acquire()
         try:
             if self.listener:
@@ -544,7 +571,10 @@ class SessionManager(TaskManager):
                         expired_seconds = self.counter - peer.last_update
 
                     if expired_seconds > self.wait_timeout[0] * self.wait_timeout[1]:
-                        Log.i(event="read",
+                        Log.i(__package__,
+                              event="read",
+                              object=self.__class__.__name__,
+                              result="failure",
                               reason="timed out")
                         self.closePeer(peer)
                     else:
@@ -560,9 +590,12 @@ class SessionManager(TaskManager):
                     if request and request.timeout > 0 and self.counter - request.start_time > request.timeout:
                         if self.listener:
                             self.listener.onResponseTimeout(request.session, request)
-                        Log.i(command=request.command,
+                        Log.i(__package__,
+                              event="request",
+                              object=self.__class__.__name__,
+                              command=request.command,
                               cseq=request.cseq,
-                              session=request.session.session_key,
+                              session_key=request.session.session_key,
                               reason='request timed out')
                         del self.requests[r]
                         del request
@@ -623,7 +656,11 @@ class SessionManager(TaskManager):
                             pass
                     except Exception as e:
                         logging.error(e.message)
-                        Log.i(event='read', reason=e.message)
+                        Log.i(__package__,
+                              event='read',
+                              object=self.__class__.__name__,
+                              result="failure",
+                              reason=e.message)
                         self.closePeer(fd)
 
         self.watch_dog.join(2)
@@ -633,23 +670,18 @@ class SessionManager(TaskManager):
 
     def stop(self, *args):
         self._exit_flag = True
+        logging.info("The session manager is exiting.")
 
 
-if __name__ == "__main__":
-    import sys
-
-
+def start_manager(address):
     def sig_proc(sig, f):
         sessionManager.stop()
 
+    logging.basicConfig(level=logging.INFO)
 
-    logging.basicConfig(level=logging.DEBUG)
-
-    sessionManager = SessionManager(address=(sys.argv[1], int(sys.argv[2])))
+    sessionManager = SessionManager(address)
     signal.signal(signal.SIGTERM, sig_proc)
     signal.signal(signal.SIGINT, sig_proc)
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
     signal.signal(signal.SIGHUP, signal.SIG_IGN)
     sessionManager.start()
-
-    pass

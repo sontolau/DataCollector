@@ -2,6 +2,9 @@ import Queue
 import logging
 import threading
 
+from libsession import Log
+
+
 class Task(object):
     def __init__(self, target, *args):
         """
@@ -28,22 +31,27 @@ class TaskQueue(object):
         self._exit_flag = False
 
     def _proc(self, *args):
-        logging.debug("[Tag] %s: started already." % (self.tag))
+        # logging.debug("[Tag] %s: started already." % (self.tag))
+        Log.d(__package__,
+              object=self.__class__.__name__,
+              log="Task %s started already successfully." % (self.tag))
         while True:
             try:
                 if self._exit_flag:
                     break
                 task = self._queue.get(True, 1)
-                # logging.debug("[Tag] %s: processing task ..." % (self.tag))
                 task.target(*task.args)
                 del task
             except Queue.Empty as e:
                 # logging.debug("Checking.")
                 continue
+            except Exception as e:
+                Log.e(__package__, object=self.__class__.__name__, log=e.message)
             finally:
                 pass
-
-        logging.debug("[Tag] %s: exited." % (self.tag))
+        Log.d(__package__,
+              object=self.__class__.__name__,
+              log="Task %s stopped." % (self.tag))
 
     def write_task(self, task, block=True, timeout=None):
         """
@@ -61,7 +69,7 @@ class TaskQueue(object):
                 raise Exception
             self._queue.put(task, block, timeout)
         except Exception as e:
-            logging.error(e.message)
+            Log.e(__package__, object=self.__class__.__name__, log=e.message)
         finally:
             pass
 
@@ -88,29 +96,6 @@ class TaskQueue(object):
                 del th
         except:
             pass
-
-
-# logging.basicConfig(level=logging.DEBUG, stream=sys.stdout)
-#
-# taskQueue = TaskQueue("In", 100, 5)
-# taskQueue.start()
-#
-# def process_task(argument,):
-#     logging.debug(argument)
-#     pass
-#
-# def write_task(*args):
-#     while True:
-#         task = Task(target=process_task, args=("hello"))
-#         taskQueue.writeTask(task)
-#     pass
-#
-# threading.Thread(target=write_task, args=()).start()
-#
-# time.sleep(5)
-# logging.debug("Stop")
-# taskQueue.stop()
-
 
 
 class TaskManager(object):
@@ -144,7 +129,6 @@ class TaskManager(object):
             for k in self._tasks.keys():
                 self._tasks[k].stop()
                 del self._tasks[k]
-
 
     def stop(self, tag=None):
         """
