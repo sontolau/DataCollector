@@ -364,7 +364,7 @@ class SessionManager(TaskManager):
                 with self.lock:
                     request = self.requests.pop(cseq, None)
                 if request:
-                    response = Response(request, errcode, **args)
+                    response = Response(request, errcode, args)
                     if hasattr(request, "_sync_lock"):
                         request.response = response
                         try:
