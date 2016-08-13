@@ -1,5 +1,6 @@
 import json
 import socket
+import traceback
 from time import time
 import time
 import select
@@ -425,6 +426,7 @@ class SessionManager(TaskManager):
                     self.listener.onRequest(session, Request(event, session, cseq, **args))
         except Exception as e:
             # logging.error("Closing connection due to %s." % (e.message))
+            traceback.print_stack()
             Log.e(__package__,
                   event=event,
                   object=self.__class__.__name__,
