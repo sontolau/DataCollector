@@ -163,15 +163,16 @@ class SessionManager(TaskManager):
         new_fd, (host, port) = local_fd.accept()
         # logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
         peer = self.newPeer(new_fd)
-        if not peer:
+        if peer is None:
             Log.i(__package__,
                   event='connect',
                   object="session",
                   remote_host=host,
                   remote_port=port,
-                  status='failure')
+                  status='failure',
+                  reason='resource limitation')
             new_fd.close()
-            return
+            return None
 
         peer.address = (host, port)
         self._update_peer(peer)
@@ -213,6 +214,7 @@ class SessionManager(TaskManager):
                 return self.connections[0][fd]
             except:
                 if self.max_clients > 0 and len(self.connections[1]) > self.max_clients:
+                    logging.error("The server is full, connection will be rejected.")
                     return None
 
                 self.connections[0][fd] = peer
@@ -226,6 +228,7 @@ class SessionManager(TaskManager):
                 return self.connections[0][fd.fileno()]
             except:
                 if self.max_clients > 0 and len(self.connections[1]) > self.max_clients:
+                    logging.error("The server is full, connection will be rejected.")
                     return None
 
                 peer = Peer(fd)
@@ -643,8 +646,6 @@ class SessionManager(TaskManager):
                                 self.acceptPeer(self.sock_fd)
                             else:
                                 self.processPeer(fd)
-                                # if data:
-                                #     self.write_task('IN', Task(self._handle_in, fd, data))
                         elif ev & select.EPOLLERR or ev & select.EPOLLHUP:
                             logging.error("EPOLLERR or EPOLLHUP event occurred.")
                             continue
