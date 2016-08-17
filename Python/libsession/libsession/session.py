@@ -208,7 +208,7 @@ class SessionManager(TaskManager):
         """
         if isinstance(fd, Peer):
             return fd
-        elif isinstance(fd, int):
+        elif not isinstance(fd, socket.socket):
             self.lock.acquire()
             try:
                 return self.connections[0][fd]
@@ -222,7 +222,7 @@ class SessionManager(TaskManager):
             finally:
                 self.lock.release()
 
-        elif isinstance(fd, socket.socket):
+        else:
             self.lock.acquire()
             try:
                 return self.connections[0][fd.fileno()]
