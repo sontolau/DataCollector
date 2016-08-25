@@ -102,9 +102,12 @@ class TaskManager(object):
     def __init__(self, *tasks):
         """
         :param tasks: task1, task2, ...,task n
+        task is kind of TaskQueue instance.
         """
         self._tasks = {}
         for task in tasks:
+            if not isinstance(task, TaskQueue):
+                raise TypeError("not instance of TaskQueue")
             self._tasks[task.tag] = task
 
     def start(self):
@@ -150,4 +153,6 @@ class TaskManager(object):
         :param task:
         :return:
         """
+        if not isinstance(task, Task):
+            raise TypeError("not instance of Task")
         self._tasks[tag].write_task(task)
