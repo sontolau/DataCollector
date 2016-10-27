@@ -29,53 +29,59 @@
 #include <assert.h>
 #endif
 
-#ifndef SZ_CLASS_NAME
-#define SZ_CLASS_NAME 50
-#endif
-
-#ifndef SZSHORTSTR
-#define SZSHORTSTR 50
-#endif
-
-
 #ifdef __cplusplus
-#define DC_CPP(x)   x
+#define CPP(x)   x
 #else
-#define DC_CPP(x)
+#define CPP(x)
 #endif
 
 #if __STDC_VERSION__ >= 199901L || __GNUC__ >= 3
-#define DC_INLINE static inline
+#define INLINE static inline
 #define FASTCALL inline
 #else
-#define DC_INLINE static
+#define INLINE static
 #define FASTCALL 
 #endif
 
-typedef void* HDC;
-
-typedef long long DC_id_t;
-
-#define type_container_of(_ptr, _type, _name) \
-    ((_type*)(((unsigned long)_ptr)-(unsigned long)(&(((_type*)0)->_name))))
-
-#define CONTAINER_OF(_ptr, _type, _name) type_container_of(_ptr, _type, _name)
-#define P(_type, _x)    ((_type*)&_x)
-
-#ifndef __PRIVATE__
-#define __PRIVATE__(x)  __##x
+#ifndef ERR
+#define ERR -1
 #endif
 
-#ifndef __PUBLIC__
-#define __PUBLIC__(x)  x
+#ifndef OK
+#define OK 0
 #endif
 
-#define PRI(x) __PRIVATE__(x)
-#define PUB(x) __PUBLIC__(x)
+#define ISNULL(x) ((x) == NULL)
+#define ISERR(x)  ((x) < 0)
+#define ISOK(x)   ((x) >= 0)
+
+#ifndef FALSE
+#define 0
+#endif
+
+#ifndef TRUE
+#define TRUE (!FALSE)
+#endif
 
 
-#ifndef __INOUT__
-#define __INOUT__
+#ifndef __private__
+#define __private__(x)  __##x
+#endif
+
+#ifndef __protected__
+#define __protected__ _##x
+#endif
+
+#ifndef __public__
+#define __public__(x)  x
+#endif
+
+#ifndef __in__
+#define __in__
+#endif
+
+#ifndef __out__
+#define __out__
 #endif
 
 #ifndef MAX
@@ -85,53 +91,5 @@ typedef long long DC_id_t;
 #ifndef MIN
 #define MIN(a,b)  (a>b?b:a)
 #endif
-
-/*
-#ifndef Dlog
-#define Dlog(_fmt, ...)  \
-do {\
-    const char *__logenv_##__LINE__=getenv ("DC_LOG");\
-    if (!__logenv_##__LINE__ || __logenv_##__LINE__[0] != '1') break;\
-    const char *__szenv_##__LINE__ = getenv ("LOG_SIZE");\
-    unsigned int __szlog_##__LINE__ = (__szenv_##__LINE__?strtoul (__szenv_##__LINE__, NULL, 10):10*1024*1024);\
-    if (ftell (stdout) >= __szlog_##__LINE__) {\
-        rewind (stdout);\
-        ftruncate (fileno (stdout), 0);\
-    }\
-\
-    fprintf(stdout, _fmt, ## __VA_ARGS__);\
-} while (0);
-
-#endif
-*/
-#include "error.h"
-
-#define CLASS_EXTENDS(__class)    __class PRI(super)
-#define DC_malloc(size)   calloc(1, size)
-#define DC_free(ptr)      free(ptr)
-
-typedef unsigned long long LLVOID_t;
-#define __block(_tag, _blk) \
-do {\
-    _tag:_blk;\
-} while (0)
-
-#define __goto(_tag) goto _tag
-
-//typedef union {
-//	char char_value;
-//	unsigned char uchar_value;
-//	short short_value;
-//	unsigned short ushort_value;
-//	int int_value;
-//	unsigned int uint_value;
-//	long long_value;
-//	unsigned long ulong_value;
-//	long long llong_value;
-//	unsigned long long ullong_value;
-//	void *pointer_value;
-//	float float_value;
-//	double double_value;
-//} DC_pointer_t ;
 
 #endif

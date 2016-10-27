@@ -1,6 +1,9 @@
 import Queue
+import logging
 import threading
+
 from libsession import Log
+
 
 class Task(object):
     def __init__(self, target, *args):

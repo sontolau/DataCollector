@@ -1,10 +1,14 @@
 import json
+import logging
 import socket
 import traceback
 from time import time
 import time
 import select
 import signal
+
+from protocol import TCP, UDP, ProtoUnsupportedException
+from schedule import Scheduler
 from task import *
 from payload import *
 
@@ -30,106 +34,217 @@ class JsonPayload(Payload):
         sessionkey = payload.get('sessionkey')
         args = payload.get('arguments', {})
         errcode = payload.get('errcode')
-
-        # if not command:
-        #     return None, cseq, sessionkey, errcode, args
-        # else:
         return command, cseq, sessionkey, errcode, args
 
     def serialize(self, **kwargs):
         return json.dumps(kwargs)
 
 
-class Listener(object):
-    """
-    the listener includes a set of functions called by SessionManager.
-    """
-
-    def onAuthenticate(self, peer, secret_key):
-        """
-        the function is used to authenticate a remote connection,
-        if everything is ok, a session key will be returned.
-        :param peer: see Peer for details.
-        :param secret_key: a string used to authenticate.
-        :return: a session key.
-        """
-        return None
-
-    def onConnect(self, session):
-        """
-        this callback is called when a session is generated successfully.
-        :param session: an instance of Session object.
-        :return:
-        """
-        pass
-
-    def onDisconnect(self, session):
-        """
-        called when an existed session will be closed.
-        :param session:
-        :return:
-        """
-        pass
-
-    def onPing(self, session, **kwargs):
-        pass
-
-    def onRequest(self, session, request):
-        """
-        called when an request arrived from remote with an existed session.
-        :param session:
-        :param request: Request object.
-        :return:
-        """
-        pass
-
-    def onResponseArrived(self, session, response):
-        """
-        called when an response arrived from remote with an existed session.
-        :param session:
-        :param response:
-        :return:
-        """
-        pass
-
-    def onResponseTimeout(self, session, request):
-        """
-        called when an request from server side is timed out.
-        :param session:
-        :param request:
-        :return:
-        """
-        pass
+class SessionUndoneException(Exception):
+    pass
 
 
 class Peer(object):
-    def __init__(self, sockfd, address=None):
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+
+    def __init__(self, sockfd, address=None, func=None):
         self.sock_fd = sockfd
-        # self.sessions = []
-        self.session = None
-        self.last_update = 0
+        self.sessions = []
+        self.ctime = time.time()
+        self.last_read_time = self.ctime
+        self.last_write_time = self.ctime
+        self.last_connect_time = self.ctime
         self.address = address
         self.lock = threading.Lock()
+        self.refcount = 1
+        self.status = Peer.DISCONNECTED
+        self._cb = func
+
+    def get(self):
+        with self.lock:
+            self.refcount += 1
+
+        return self
+
+    def close(self):
+        with self.lock:
+            self.refcount -= 1
+
+            if self.refcount <= 0:
+                self.sock_fd.close()
+                if self._cb is not None:
+                    self._cb(self)
+
+    def addSession(self, session):
+        with self.lock:
+            self.sessions.append(session)
+            setattr(session, "peer", self)
+
+    def removeSession(self, session):
+        with self.lock:
+            try:
+                for s in self.sessions:
+                    if s == session:
+                        self.sessions.remove(s)
+            except:
+                pass
+
+    def read(self, proto):
+        with self.lock:
+            data = proto.receive()
+            self.last_read_time = time.time()
+            return data
+
+    def write(self, proto, data):
+        with self.lock:
+            proto.send(data)
+            self.last_write_time = time.time()
 
 
 class Session(object):
-    def __init__(self, peer, session_key):
-        self.session_key = session_key
-        self.create_time = time.time()
-        self.cseq = 0
-        self.peer = peer
+    DISCONNECTED = 0
+    CONNECTING = 1
+    CONNECTED = 2
+    pass
+
+
+class SessionProcessor(object):
+    @classmethod
+    def parseData(cls, data):
+        pass
+
+    @classmethod
+    def isRequest(cls, data):
+        pass
+
+    @classmethod
+    def isResponse(cls, data):
+        pass
+
+    @classmethod
+    def getRequestType(cls, data):
+        pass
+
+    @classmethod
+    def getSessionKey(cls, data):
+        pass
+
+    @classmethod
+    def createSession(cls, peer, data):
+        pass
+
+        # @classmethod
+        # def
+
+
+class AuthenFailedException(Exception):
+    pass
+
+
+class DefaultSessionProcessor(SessionProcessor):
+    @classmethod
+    def parseData(cls, data):
+        return json.loads(data)
+
+    @classmethod
+    def isRequest(cls, js):
+        if js.get("command") != None:
+            request = Request()
+            request.command = js.get("command")
+            request.cseq = js.get("cseq")
+            request.session_key = js.get("session_key")
+            request.arguments = js.get("arguments", {})
+            return request, request.cseq
+
+        return None, None
+
+    @classmethod
+    def isResponse(cls, js):
+        if js.get("command") == None:
+            resp = Response()
+            resp.cseq = js.get("cseq")
+            resp.session_key = js.get("session_key")
+            resp.arguments = js.get("arguments", {})
+            return resp, resp.cseq
+
+        return None, None
+
+    @classmethod
+    def isConnected(cls, request):
+        if request.command == "connect":
+            return True, request.arguments.get("secret_key")
+        return False, None
+
+    @classmethod
+    def isDisconnected(cls, request):
+        if request.command == "disconnect":
+            return True, request.arguments.get("session_key")
+        return False, None
+
+    @classmethod
+    def isTransaction(cls, request):
+        if request.command not in ("connect", "disconnect", "ping"):
+            return True, request.session_key, request.arguments
+        return False, None, None
+
+    @classmethod
+    def makeRequest(cls, **data):
+        pass
+
+    @classmethod
+    def makeResponse(cls, **data):
+        pass
+
+
+
+
+    @classmethod
+    def makeConnectRequest(cls, secretkey, **kwargs):
+        pass
+
+    @classmethod
+    def makeDisconnectRequest(cls, ):
+        pass
+
+    @classmethod
+    def disconnect(cls, session):
+        pass
+
+    @classmethod
+    def request(cls, session, **data):
+        pass
+
+    @classmethod
+    def response(cls, session, request, **data):
+        pass
+
+    # @classmethod
+    # def createSession(cls, peer, js):
+    #     secret_key = js.get("arguments", {}).get("secretkey", None)
+    #     if cls.manager.listener.onAuthenticate(peer, secret_key):
+    #         session = Session()
+    #         session.peer = peer
+    #         session.secret_key = secret_key
+    #         session.status = Session.CONNECTED
+    #         session.session_key = cls.manager.listener.onConnect(session)
+    #         return session
+    #     else:
+    #         raise AuthenFailedException()
+
+    @classmethod
+    def writeSession(cls, session, **data):
+        pass
 
 
 class Request(object):
-    def __init__(self, command, session, cseq, **arguments):
-        self.command = command
-        self.session = session
-        self.cseq = cseq
-        self.arguments = arguments
-        #
-        # for k in kwargs.keys():
-        #     setattr(self, k, kwargs[k])
-        # self.start_time = time.time()
+    pass
+
+    #
+    # for k in kwargs.keys():
+    #     setattr(self, k, kwargs[k])
+    # self.start_time = time.time()
 
 
 class Response(object):
@@ -144,6 +259,89 @@ class Response(object):
 
 
 class SessionManager(TaskManager):
+    CONNECTING = 1
+    CONNECTED = 2
+    DISCONNECTED = 3
+
+    class Config(object):
+        bind = False
+        protocol = TCP
+        in_queue = (100, 1),
+        out_queue = (100, 1),
+        max_clients = 0,
+        wait_timeout = (0, 0),
+        max_bytes = 0xFFFF
+        snd_buf_size = 0xFFFF
+        rcv_buf_size = 0xFFFF
+        snd_rcv_timeout = 0
+
+    class Listener(object):
+        """
+        the listener includes a set of functions called by SessionManager.
+        """
+
+        def onAuthenticate(self, peer, secret_key):
+            """
+            the function is used to authenticate a remote connection,
+            if everything is ok, a session key will be returned.
+            :param peer: see Peer for details.
+            :param secret_key: a string used to authenticate.
+            :return: a session key.
+            """
+            return True
+
+        def onConnect(self, session):
+            """
+            this callback is called when a session is generated successfully.
+            :param session: an instance of Session object.
+            :return:
+            """
+            pass
+
+        def onDisconnect(self, session):
+            """
+            called when an existed session will be closed.
+            :param session:
+            :return:
+            """
+            pass
+
+        def onPing(self, session, **kwargs):
+            pass
+
+        def onRequest(self, session, request):
+            """
+            called when an request arrived from remote with an existed session.
+            :param session:
+            :param request: Request object.
+            :return:
+            """
+            pass
+
+        def onResponseArrived(self, session, response):
+            """
+            called when an response arrived from remote with an existed session.
+            :param session:
+            :param response:
+            :return:
+            """
+            pass
+
+        def onResponseTimeout(self, session, request):
+            """
+            called when an request from server side is timed out.
+            :param session:
+            :param request:
+            :return:
+            """
+            pass
+
+    def getConfValue(self, key, default):
+        if self.options is not None:
+            return self.options.get(key, default)
+
+        return default
+
     def sendPayload(self, peer, **kwargs):
         """
         send payload to remote connection.
@@ -152,154 +350,13 @@ class SessionManager(TaskManager):
         :return:
         """
         data = self.payload.serialize(**kwargs)
-        self.write_task("OUT", Task(self._handle_out, peer, data))
-
-    def acceptPeer(self, local_fd):
-        """
-        accept a new peer.
-        :param local_fd:
-        :return:
-        """
-        new_fd, (host, port) = local_fd.accept()
-        # logging.info("Connection established: <<<<<<< %s,%d" % (host, port))
-        peer = self.newPeer(new_fd)
-        if peer is None:
-            Log.i(__package__,
-                  event='connect',
-                  object="session",
-                  remote_host=host,
-                  remote_port=port,
-                  status='failure',
-                  reason='resource limitation')
-            new_fd.close()
-            return None
-
-        peer.address = (host, port)
-        self._update_peer(peer)
-        self.epoll.register(new_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
-        Log.i(__package__,
-              event='connect',
-              object=self.__class__.__name__,
-              remote_host=host,
-              remote_port=port,
-              status='success')
-        return peer
-
-    def _update_peer(self, peer):
-        self.lock.acquire()
-        try:
-            self.connections[1].remove(peer)
-        except:
-            pass
-
-        try:
-            self.connections[1].append(peer)
-            peer.last_update = self.counter
-        except:
-            pass
-        self.lock.release()
-
-    def newPeer(self, fd, peer=None):
-        """
-        return an existed peer or create new peer with specific file descriptor.
-        :param fd:
-        :param peer:
-        :return:
-        """
-        if isinstance(fd, Peer):
-            return fd
-        elif not isinstance(fd, socket.socket):
-            self.lock.acquire()
+        with self.lock:
             try:
-                return self.connections[0][fd]
-            except:
-                if self.max_clients > 0 and len(self.connections[1]) > self.max_clients:
-                    logging.error("The server is full, connection will be rejected.")
-                    return None
-
-                self.connections[0][fd] = peer
-                return peer
-            finally:
-                self.lock.release()
-
-        else:
-            self.lock.acquire()
-            try:
-                return self.connections[0][fd.fileno()]
-            except:
-                if self.max_clients > 0 and len(self.connections[1]) > self.max_clients:
-                    logging.error("The server is full, connection will be rejected.")
-                    return None
-
-                peer = Peer(fd)
-                self.connections[0][fd.fileno()] = peer
-                return peer
-            finally:
-                self.lock.release()
-
-    def closePeer(self, peer):
-        """
-        close remote connection.
-        :param peer:
-        :return:
-        """
-        peer = self.newPeer(peer)
-        peer.lock.acquire()
-        self.lock.acquire()
-        try:
-            try:
-                self.epoll.unregister(peer.sock_fd.fileno())
-            except Exception as e:
-                pass
-            # remove from local collections
-            try:
-                del self.connections[0][peer.sock_fd.fileno()]
+                self.write_task("OUT", Task(self._handle_out, peer, data))
             except:
                 pass
 
-            try:
-                self.connections[1].remove(peer)
-            except:
-                pass
-        finally:
-            self.lock.release()
-
-        try:
-            self.closeSession(peer.session)
-            peer.sock_fd.close()
-            Log.i(__package__,
-                  event='disconnect',
-                  object=self.__class__.__name__,
-                  remote_host=peer.address[0],
-                  remote_port=peer.address[1])
-        finally:
-            peer.lock.release()
-
-        del peer
-
-    def processPeer(self, peer):
-        """
-        read from remote connection and process data.
-        :param peer:
-        :return:
-        """
-        peer = self.newPeer(peer)
-        if not peer:
-            return
-        peer.lock.acquire()
-        try:
-            bufdata = peer.sock_fd.recv(self.max_bytes)
-            if len(bufdata) <= 0:
-                raise IOError("The remote peer has closed the connection.")
-
-            self._update_peer(peer)
-            self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(bufdata)))
-        except Exception as e:
-            raise IOError(e.message)
-        finally:
-            peer.lock.release()
-
-    def sendRequest(self, session, command, timeout=0, sync=False, **arguments):
+    def sendRequest(self, peer, request, timeout=0, **arguments):
         """
         send request to an existed session.
         :param session:
@@ -308,28 +365,220 @@ class SessionManager(TaskManager):
         :param timeout:
         :return:
         """
-        request = Request(command=command,
-                          cseq=self.cseq,
-                          session=session,
-                          arguments=arguments)
-
-        setattr(request, "start_time", self.counter)
+        setattr(request, "start_time", time.time())
         setattr(request, "timeout", timeout)
-        self.sendPayload(session.peer,
-                         command=command,
-                         cseq=self.cseq,
-                         sessionkey=session.session_key,
+
+        self.sendPayload(peer,
+                         command=request.command,
+                         cseq=request.cseq,
+                         sessionkey=request.session.session_key,
                          arguments=arguments)
 
         with self.lock:
-            self.requests[self.cseq] = request
+            self.requests[request.cseq] = request
+
+    def _sendCONNECT(self, peer, secretkey):
+        cseq = self.getCSeq()
+        request = Request("connect", None, cseq, **{"secretkey": secretkey})
+        self.sendRequest(peer, request, self.getConfValue("request_timeout", 5))
+
+    def createSession(self, secretkey, **kwargs):
+        pass
+
+    def writeSession(self, session, **kwargs):
+        if session.status != Session.CONNECTED:
+            raise
+        pass
+
+    def readSession(self, session, **kwargs):
+        pass
+
+    def closeSession(self, session):
+        with session.peer.lock:
+            try:
+                session.peer.sessions.remove(session)
+            except:
+                pass
+
+        with self.lock:
+            try:
+                del self.sessions[session.sessionKey]
+                del session
+            except:
+                pass
+
+    def openPeer(self, address, async=False, **options):
+        sock_fd = self.proto.socket(address, **options)
+        peer = Peer(sock_fd, address)
+        peer.async = async
+
+        if peer.async:
+            with self.lock:
+                self.epoll.register((peer.sock_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR))
+
+        return peer
+
+    def acceptPeer(self, peer, async=False):
+        """
+        accept a new peer.
+        :param local_fd:
+        :return:
+        """
+
+        if self.proto == UDP:
+            new_fd, _ = self.proto.accept(peer.sock_fd)
+            return peer.get()
+        elif self.proto == TCP:
+            new_fd, (host, port) = self.proto.accept(peer.sock_fd)
+            new_peer = Peer(new_fd, (host, port))
+            new_peer.async = async
+
+            if new_peer.async:
+                with self.lock:
+                    self.epoll.register(new_peer.sock_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
+                    self.remote_peers[new_peer.sock_fd.fileno()] = new_peer
+        else:
+            raise ProtoUnsupportedException()
+
+        return new_peer
+
+    def readPeer(self, peer):
+        with peer.lock:
+            data = self.proto.receive(peer.sock_fd)
+            peer.last_read_time = time.time()
+
+        return data
+
+    def writePeer(self, peer, data):
+        with peer.lock:
+            self.proto.send(peer.sock_fd, data)
+            peer.last_write_time = time.time()
+
+    def connectPeer(self, peer, address=None):
+        with peer.lock:
+            self.proto.connect(peer.sock_fd, address)
+            peer.last_connect_time = time.time()
+            return True
+
+    def getCSeq(self):
+        with self.lock:
             self.cseq += 1
 
-        if sync:
-            request._sync_lock = threading.Lock()
-            request._sync_lock.acquire()
+            return self.cseq
 
-        return request
+    def createSession(self, peer, address, secretkey, connect_timeout=5):
+        cseq = self.getCSeq()
+
+        self.connectPeer(peer, address)
+        self.sendPayload(peer, command="connect", cseq=cseq, arguments={"secretkey": secretkey})
+        self.sendRequest()
+        session = Session()
+        session.status = Session.CONNECTING
+        peer.sessions[]
+        if peer.async:
+            self.requests[self.cseq] = cseq
+
+        session.status = Session.CONNECTING
+        self.sendPayload(peer, cseq=)
+
+        while True:
+
+        while retry > 0 and retry_times < retry:
+            try:
+                self.connectPeer(peer, address)
+            except:
+                time.sleep(interval)
+                retry_times += 1
+                continue
+
+            _ = select.select((), (), (), 1.0)
+
+    def closePeer(self, peer):
+        """
+        close remote connection.
+        :param peer:
+        :return:
+        """
+
+        with peer.lock:
+            peer.refcount -= 1
+            if peer.refcount > 0:
+                return
+            else:
+                sessions = peer.sessions
+
+        for s in sessions:
+            self.closeSession(s)
+
+        with self.lock:
+            try:
+                self.epoll.unregister(peer.sock_fd.fileno())
+            except:
+                pass
+            try:
+                del self.remote_peers[peer.sock_fd.fileno]
+                del peer
+            except:
+                pass
+
+                # try:
+                #     peer.sock_fd.close()
+                #         except:
+                #             pass
+                #     try:
+                #         del peer
+                #     except:
+                #         pass
+
+                # self.lock.acquire()
+                # try:
+                #     try:
+                #         self.epoll.unregister(peer.sock_fd.fileno())
+                #     except Exception as e:
+                #         pass
+                #
+                #     for s in peer.sessions:
+                #         self.closeSession(s)
+                #         peer.removeSess
+                #     # remove from local collections
+                #     try:
+                #         del self.connections[0][peer.sock_fd.fileno()]
+                #     except:
+                #         pass
+                #
+                #     try:
+                #         self.connections[1].remove(peer)
+                #     except:
+                #         pass
+                # finally:
+                #     self.lock.release()
+                #
+                # try:
+                #     self.closeSession(peer.session)
+                #     peer.sock_fd.close()
+                #     Log.i(__package__,
+                #           event='disconnect',
+                #           object=self.__class__.__name__,
+                #           remote_host=peer.address[0],
+                #           remote_port=peer.address[1])
+                # finally:
+                #     peer.lock.release()
+                #
+                # del peer
+
+    def processIncoming(self, peer):
+        """
+        read from remote connection and process data.
+        :param peer:
+        :return:
+        """
+
+        data = peer.read(self.proto)
+        if self.proto == TCP and len(data) <= 0:
+            raise IOError("")
+
+        with self.lock:
+            self.write_task('IN', Task(self._handle_in, peer, self.payload.payload(data)))
 
     def waitForReply(self, request, timeout=0):
         if not hasattr(request, '_sync_lock'):
@@ -440,39 +689,55 @@ class SessionManager(TaskManager):
             Log.e(__package__, event='send', log=e.message)
             self.closePeer(peer)
 
+    def _watch_dog(self):
+        pass
+
     def __init__(self,
                  address,
+                 proto=TCP,
                  listener=Listener,
                  payload=JsonPayload,
-                 in_queue=(100, 1),
-                 out_queue=(100, 1),
-                 # max_sessions=0,
-                 max_clients=0,
-                 wait_timeout=(0, 0),
-                 max_bytes=0xFFFF):
-        super(SessionManager, self).__init__(TaskQueue("IN", in_queue[0], in_queue[1]),
-                                             TaskQueue("OUT", out_queue[0], out_queue[1]))
+                 **options):
+
+        in_queue_size, in_num_thrds = options.get("in_queue", (100, 1))
+        out_queue_size, out_num_thrds = options.get("out_queue", (100, 1))
+
+        super(SessionManager, self).__init__(TaskQueue("IN", in_queue_size, in_num_thrds),
+                                             TaskQueue("OUT", out_queue_size, out_queue_size))
+        self.listener = listener()
+        self.payload = payload()
+        self.proto = proto
+
+        self.listener.manager = self
         self.address = address
         self._exit_flag = False
-        self.sock_fd = None
         self.lock = threading.Lock()
         self.requests = {}
         self.cseq = 0
         self.counter = 0
+        self.options = options
+
+        self.peer = Peer(self.proto.socket(address, **options), address, self.closePeer)
+        self.epoll = select.epoll()
+        self.epoll.register(self.peer.sock_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
+        self.scheduler = Scheduler()
+
+        self.scheduler.register("watch_dog", options.get("keepalive", 1), self.watch_dog)
+        # self.sock_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_IP)
+        # self.sock_fd.setblocking(False)
+        # self.sock_fd.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, True)
+        # self.sock_fd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+        # self.sock_fd.bind(self.address)
+        # self.sock_fd.listen(500)
+
+        self.remote_peers = {}
+        self.status = SessionManager.DISCONNECTED
+
         self.sessions = {}
         self.connections = [{}, []]
         self.session_list = []
-        # self.max_sessions = max_sessions
-        self.max_clients = max_clients
-        self.wait_timeout = wait_timeout
-        self.max_bytes = max_bytes
-
-        if listener:
-            self.listener = listener()
-            self.listener.manager = self
-
-        self.payload = payload()
-        self.payload.manager = self
+        self.scheduler = Scheduler()
+        pass
 
     # create new session.
     def createSession(self, peer, sessionkey, secretkey):
@@ -561,7 +826,7 @@ class SessionManager(TaskManager):
             time.sleep(1)
             self.counter += 1
 
-            if self.wait_timeout[0] > 0 and self.counter % self.wait_timeout[0] == 0:
+            if self.config.wait_timeout[0] > 0 and self.counter % self.config.wait_timeout[0] == 0:
                 with self.lock:
                     peers = self.connections[1]
 
@@ -569,7 +834,7 @@ class SessionManager(TaskManager):
                     with peer.lock:
                         expired_seconds = self.counter - peer.last_update
 
-                    if expired_seconds > self.wait_timeout[0] * self.wait_timeout[1]:
+                    if expired_seconds > self.config.wait_timeout[0] * self.config.wait_timeout[1]:
                         Log.i(__package__,
                               event="read",
                               object=self.__class__.__name__,
@@ -601,9 +866,28 @@ class SessionManager(TaskManager):
                 finally:
                     self.lock.release()
 
-    # def _signal_proc(self, sig):
-    #     if sig in (signal.SIGINT, signal.SIGTERM):
-    #         self._exit_flag = True
+    def _receive_remote(self):
+        ev_fds = self.epoll.poll(1.0, maxevents=-1)
+        if len(ev_fds) < 0:
+            return
+
+        for fd, ev in ev_fds:
+            if ev & select.EPOLLIN:
+                if fd == self.peer.sock_fd.fileno():
+                    self.acceptPeer(self.peer)
+                else:
+                    peer = self.remote_peers[fd]
+                    self.processIncoming(peer)
+            else:
+                raise IOError("")
+
+    def _connect_remote(self):
+        self.lock.acquire()
+        try:
+            if len(self.peer.sessions) > 0:
+                session = self.peer.sessions.pop(0)
+            else:
+                session = Session()
 
     def start(self):
         """
@@ -611,25 +895,8 @@ class SessionManager(TaskManager):
         :return:
         """
         super(SessionManager, self).start()
-        # create TCP socket server.
-        self.epoll = select.epoll()
-        self.sock_fd = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_IP)
-        self.sock_fd.setblocking(False)
-        self.sock_fd.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, True)
-        self.sock_fd.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-        self.sock_fd.bind(self.address)
-        self.sock_fd.listen(500)
-        self.epoll.register(self.sock_fd.fileno(), select.EPOLLIN | select.EPOLLPRI | select.EPOLLERR)
+        self.scheduler.start()
 
-        # start watch dog thread to inspect system.
-        self.watch_dog = threading.Thread(target=self._watch_dog, name="watch_dog")
-        self.watch_dog.setDaemon(True)
-        self.watch_dog.start()
-
-        # set signal processor.
-
-
-        # loop core.
         while not self._exit_flag:
             try:
                 ev_fds = self.epoll.poll(1.0, maxevents=-1)
@@ -660,23 +927,23 @@ class SessionManager(TaskManager):
                               reason=e.message)
                         self.closePeer(fd)
 
-        self.watch_dog.join(2)
-        self.sock_fd.close()
-        self.epoll.close()
-        super(SessionManager, self).stop()
+        self.scheduler.stop()
 
     def stop(self, *args):
+        super(SessionManager, self).stop()
+
         self._exit_flag = True
+        self.scheduler.stop()
         logging.info("The session manager is exiting.")
 
 
-def start_manager(address):
+def start_default_manager(address, listener):
     def sig_proc(sig, f):
         sessionManager.stop()
 
     logging.basicConfig(level=logging.INFO)
 
-    sessionManager = SessionManager(address)
+    sessionManager = SessionManager(address, listener)
     signal.signal(signal.SIGTERM, sig_proc)
     signal.signal(signal.SIGINT, sig_proc)
     signal.signal(signal.SIGPIPE, signal.SIG_IGN)
