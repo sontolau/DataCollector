@@ -5,16 +5,16 @@
 
 CPP (extern "C" {)
 
-struct _DC_Link {
-    struct _DC_Link *next;
-    struct _DC_Link *prev;
+typedef struct _DC_link {
+    struct _DC_link *next;
+    struct _DC_link *prev;
 }DC_link_t;
 
 #define LINK_INIT (struct _DC_Link){NULL, NULL}
 
 
-extern void DC_link_add (DC_link_t *node, DC_link_t *link);
-extern void DC_link_remove (DC_link_t *link);
+extern void DC_link_add (__in__ DC_link_t *node, __in__ DC_link_t *link);
+extern void DC_link_remove (__in__ DC_link_t *link);
 
 #define DC_link_container_of(_ptr, _type, _name) ((_type*)(((unsigned long)_ptr)-(unsigned long)(&(((_type*)0)->_name))))
 

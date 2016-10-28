@@ -1,100 +1,206 @@
 #include "queue.h"
 
-DC_INLINE unsigned long long __get_queue_offset (LLVOID_t *curpos, LLVOID_t *startpos, int size)
+FASTCALL unsigned long long __get_queue_offset (DC_queue_object_t *curpos, DC_queue_object_t *startpos, int size)
 {
-    unsigned int offset = (unsigned char*)curpos - (unsigned char*)startpos;
+    uint32_t offset = (unsigned char*)curpos - (unsigned char*)startpos;
 
-    return ((int)(offset / sizeof (LLVOID_t)))%size;
+    return ((int)(offset / sizeof (DC_queue_object_t)))%size;
 }
 
-DC_INLINE LLVOID_t *__recalc_address (DC_queue_t *queue, LLVOID_t *ptr)
+FASTCALL DC_queue_object_t *__recalc_address (DC_queue_t *queue, DC_queue_object_t *ptr)
 {
-    return  (queue->PRI (buffer) + __get_queue_offset (++ptr,
-                                         queue->PRI (buffer),
+  return  (queue->buf_ptr + __get_queue_offset (++ptr,
+                                         queue->buf_ptr,
                                          queue->size));
 }
 
-int DC_queue_init (DC_queue_t *queue, unsigned int size, LLVOID_t zero)
+err_t DC_queue_init (DC_queue_t *queue, 
+                   uint32_t size, 
+                   DC_queue_object_t zero)
 {
     int i = 0;
 
-    queue->__buffer = (LLVOID_t*)calloc (size, sizeof (LLVOID_t));
-    if (!queue->__buffer) {
-        return ERR_FAILURE;
+
+    queue->buf_ptr = (DC_queue_object_t*)calloc (size, sizeof (DC_queue_object_t));
+    if (!queue->buf_ptr) {
+        return E_SYSTEM;
     }
 
-    queue->zero_value = zero;
+    queue->init_value = zero;
     queue->size       = size;
     for (i=0; i<size; i++) {
-        queue->PRI (buffer)[i] = zero;
+        queue->buf_ptr[i] = zero;
     }
 
-    queue->PRI (tail_ptr) = queue->PRI (head_ptr) = queue->PRI (buffer);
-    return ERR_OK;
-}
+    queue->tail_ptr = queue->head_ptr = queue->buf_ptr;
 
-
-int DC_queue_is_empty (const DC_queue_t *queue)
-{
-    return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr== queue->zero_value;
-}
-
-
-int DC_queue_is_full (const DC_queue_t *queue)
-{
-    return queue->__tail_ptr == queue->__head_ptr &&\
-           *queue->__head_ptr != queue->zero_value;
-}
-
-
-int DC_queue_add (DC_queue_t *queue, LLVOID_t obj, int overwrite)
-{
-    if (!overwrite && DC_queue_is_full (queue)) {
-        return ERR_FULL;
+    if (ISERR (DC_thread_mutex_init (queue->t_mutex))) {
+        free (queue->buf_ptr);
+        return E_ERROR;
     }
 
-    (*queue->PRI (head_ptr)) = obj;
-    queue->PRI (head_ptr)  = __recalc_address (queue, queue->PRI (head_ptr));
-    return ERR_OK;
+
+    if (ISERR (DC_thread_cond_init (queue->t_cond))) {
+        free (queue->buf_ptr);
+        DC_thread_mutex_destroy (queue->t_mutex);
+        return E_ERROR;
+    }
+
+
+    return E_OK;
 }
 
-int DC_queue_get_length (const DC_queue_t *queue)
+#define QUEUE_EMPTY(queue) ((queue->tail_ptr == queue->head_ptr &&\
+           *queue->head_ptr== queue->init_value?TRUE:FALSE))
+
+#define QUEUE_FULL(queue) ((queue->tail_ptr == queue->head_ptr &&\
+             *queue->head_ptr != queue->init_value?TRUE:FALSE))
+
+bool_t DC_queue_is_empty (DC_queue_t *queue)
 {
+    bool_t s;
+    int err = E_OK;
+
+    DC_syn_run (queue->t_mutex, err, {
+        s = QUEUE_EMPTY (queue);
+    });
+
+    return err==E_OK?s:FALSE;
+}
+
+
+bool_t DC_queue_is_full (DC_queue_t *queue)
+{
+    bool_t s;
+    int err = E_OK;
+
+    DC_syn_run (queue->t_mutex, err, {
+        s = QUEUE_FULL(queue);
+    });
+
+    return err==E_OK?s:FALSE;
+}
+
+
+err_t DC_queue_add (DC_queue_t *queue, 
+                  DC_queue_object_t obj, 
+                  bool_t block, 
+                  uint32_t timeout)
+{
+    if (ISERR (DC_thread_mutex_lock (queue->t_mutex))) {
+        return E_ERROR;
+    }
+
+    if (QUEUE_FULL (queue)) {
+        if (!block) {
+            DC_thread_mutex_unlock (queue->t_mutex);
+            DC_set_errcode (E_FULL);
+            return E_ERROR;
+        } else {
+
+            if (timeout > 0) {
+                if (ISERR (DC_thread_cond_timedwait (queue->t_cond,
+                                                     queue->t_mutex,
+                                                     timeout))) {
+                    DC_thread_mutex_unlock (queue->t_mutex);
+                    return E_ERROR;
+                }
+            } else {
+                if (ISERR (DC_thread_cond_wait (queue->t_cond,
+                                                queue->t_mutex))) {
+                    DC_thread_mutex_unlock (queue->t_mutex);
+                    return E_ERROR;
+                }
+            }
+        }
+    }
+
+
+    (*queue->head_ptr) = obj;
+    queue->head_ptr  = __recalc_address (queue, queue->head_ptr);
+    DC_thread_cond_signal (queue->t_cond);
+
+    DC_thread_mutex_unlock (queue->t_mutex);
+
+    return E_OK;
+}
+
+int DC_queue_get_length (DC_queue_t *queue)
+{
+    int len = 0;
+    err_t err = E_OK;
+
     if (DC_queue_is_empty (queue)) return 0;
     if (DC_queue_is_full (queue)) return queue->size;
-    
-    if (queue->PRI (head_ptr) > queue->PRI (tail_ptr)) {
-        return queue->PRI (head_ptr) - queue->PRI (tail_ptr);
-    }
 
-    return queue->size - (queue->PRI (tail_ptr)-queue->PRI (head_ptr));
+    DC_syn_run(queue->t_mutex, err, {       
+        if (queue->head_ptr > queue->tail_ptr) {
+            len = queue->head_ptr - queue->tail_ptr;
+            DC_syn_break (queue->t_mutex);
+        }
+
+        len = queue->size - (queue->tail_ptr-queue->head_ptr);
+    });
+
+    return err==E_OK?len:E_ERROR;
 }
 
-LLVOID_t DC_queue_fetch (DC_queue_t *queue)
+DC_queue_object_t DC_queue_fetch (DC_queue_t *queue, 
+                                  bool_t block, 
+                                  uint32_t timeout)
 {
-    LLVOID_t obj;
+    DC_queue_object_t obj;
 
-    if (DC_queue_is_empty (queue)) {
-        return queue->zero_value;
+    if (ISERR (DC_thread_mutex_lock (queue->t_mutex))) {
+        return queue->init_value;
     }
 
-    obj = *queue->PRI (tail_ptr);
-    (*queue->PRI (tail_ptr)) = queue->zero_value;
-    queue->PRI (tail_ptr)  = __recalc_address (queue, queue->PRI (tail_ptr));
+    if (QUEUE_EMPTY (queue)) {
+        if (!block) {
+            DC_thread_mutex_unlock (queue->t_mutex);
+            DC_set_errcode (E_EMPTY);
+            return queue->init_value;
+        } else {
+            if (timeout > 0) {
+                if (ISERR (DC_thread_cond_timedwait (queue->t_cond, 
+                                                     queue->t_mutex, 
+                                                     timeout))) {
+                    DC_thread_mutex_unlock (queue->t_mutex);
+                    return queue->init_value;
+                }
+            } else {
+                if (ISERR (DC_thread_cond_wait (queue->t_cond,
+                                                queue->t_mutex))) {
+                    DC_thread_mutex_unlock (queue->t_mutex);
+                    return queue->init_value;
+                }
+            }
+        }
+    }
+
+    
+    obj = *queue->tail_ptr;
+    (*queue->tail_ptr) = queue->init_value;
+    queue->tail_ptr  = __recalc_address (queue, queue->tail_ptr);
+    DC_thread_cond_signal_all (queue->t_cond);
+    DC_thread_mutex_unlock (queue->t_mutex);
+
     return obj;
 }
 
 void DC_queue_clear (DC_queue_t *queue)
 {    
-    while (DC_queue_fetch (queue) != queue->zero_value);
+    while (DC_queue_fetch (queue, FALSE, 0) != queue->init_value);
 }
 
 void DC_queue_destroy (DC_queue_t *queue)
 {
     DC_queue_clear (queue);
     
-    if (queue->PRI (buffer)) {
-        free (queue->PRI (buffer));
+    if (queue->buf_ptr) {
+        free (queue->buf_ptr);
     }
+
+    DC_thread_mutex_destroy (queue->t_mutex);
+    DC_thread_cond_destroy (queue->t_cond);
 }

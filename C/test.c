@@ -1,58 +1,52 @@
-#include "libdc.h"
-#include "thread.h"
-#include "io.h"
+#include "queue.h"
+#include <signal.h>
 
-#if 0
-DC_task_manager_t manager;
-static unsigned int count = 0;
-DC_task_queue_t   task_queue;
+DC_queue_t queue;
+unsigned int x = 0;
+unsigned int y = 0;
+volatile int ext = 0;
 
-void func (void *data)
+void sig(int s)
 {
-    printf ("%u thread is running.%u\n", pthread_self (), ++count);
+    if (s == SIGINT) {
+        if (ext == 1) exit (0);
+        ext = 1;
+        return;
+    }
+
+    printf ("Writing count: %u Reading count: %u\n", x, y);
+    alarm (1);
 }
 
-#define HELLO "hello"
-void thread (void *data)
-{
-    while (1) {
-        //DC_task_manager_run_task (&manager, func, NULL, 1);
-        DC_task_queue_run_task (&task_queue, HELLO, 1);
+void *print_func(void *data) {
+    DC_queue_object_t e;
+
+    while ((e = DC_queue_fetch (&queue, TRUE, 0)) != (DC_queue_object_t)NULL) {
+        y++;
+        //fprintf (stderr, "Reading: %u\n", e);
     }
 }
 
+void main() {
+   DC_thread_t t;
+   time_t tm;
 
-void task (void *d1, void *d2)
-{
-    printf ("%u thread prints %s\n", pthread_self (), (char*)d2);
-}
+   DC_thread_create (t, print_func, NULL);
+   DC_queue_init (&queue, 100, 0);
+   signal (SIGALRM, sig);
+   //signal (SIGINT, sig);
+   alarm (1);
+   
+   usleep (1);
+   while (!ext) {
+       tm = (time(NULL)/1000);
+       //fprintf (stderr, "Writing : %u\n", t);
+       if (ISERR (DC_queue_add (&queue, (DC_queue_object_t)tm, TRUE, 0))) {
+           fprintf (stderr, "Queue is error\n");
+           break;
+       }
+       x++;
+   }
 
-void main ()
-{
-    DC_thread_t threads[10];
-
-    int i;
-
-    DC_task_queue_init (&task_queue, 100, 5, task ,NULL);
-    //DC_task_manager_init (&manager, 5);
-    for (i=0; i<10; i++) {
-        DC_thread_init (&threads[i], 0);
-        DC_thread_run (&threads[i], thread, NULL);
-    }
-
-    sleep (10000);
-}
-#endif
-
-void main (int argc, char *argv[])
-{
-    int num = 0;
-    char **p = DC_split_str (argv[1], argv[2], &num);
-    int i;
-
-    for (i=0; p && i < num; i++) {
-        printf ("%d: %s\n", i, p[i]);
-    }
-
-    if (p) free (p);
+   sleep (100);
 }

@@ -27,7 +27,11 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+typedef uint8_t bool_t;
 #endif
+
+typedef uint8_t bool_t;
+typedef uint32_t err_t;
 
 #ifdef __cplusplus
 #define CPP(x)   x
@@ -56,7 +60,7 @@
 #define ISOK(x)   ((x) >= 0)
 
 #ifndef FALSE
-#define 0
+#define FALSE 0
 #endif
 
 #ifndef TRUE
@@ -82,6 +86,10 @@
 
 #ifndef __out__
 #define __out__
+#endif
+
+#ifndef __inout__
+#define __inout__
 #endif
 
 #ifndef MAX

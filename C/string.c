@@ -1,7 +1,7 @@
 #include "libdc.h"
 #include "str.h"
 
-const char *DC_struncate (char *str)
+const char *DC_strip (char *str)
 {
     register char *ptr = str + strlen (str) - 1;
 
@@ -45,8 +45,8 @@ int DC_substr (const char *str, const char *substr, int start)
 	int szsubstr = strlen (substr);
 	int szstr = strlen (str);
 
-	if (start >= szstr) return -1;
-	if (szsubstr > szstr) return -1;
+	if (start >= szstr) return ERR;
+	if (szsubstr > szstr) return ERR;
 
 	ptr = (char*)str + start;
 	while (*ptr) {
@@ -60,7 +60,7 @@ int DC_substr (const char *str, const char *substr, int start)
 		ptr++;
 	}
 
-	return -1;
+	return ERR;
 }
 
 static inline char *__find_str (char **start, const char *end)
