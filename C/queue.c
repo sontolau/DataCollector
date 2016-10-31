@@ -1,13 +1,15 @@
 #include "queue.h"
+#include "mm.h"
 
-FASTCALL unsigned long long __get_queue_offset (DC_queue_object_t *curpos, DC_queue_object_t *startpos, int size)
+
+FASTCALL unsigned long long __get_queue_offset (OBJ_t *curpos, OBJ_t *startpos, int size)
 {
     uint32_t offset = (unsigned char*)curpos - (unsigned char*)startpos;
 
-    return ((int)(offset / sizeof (DC_queue_object_t)))%size;
+    return ((int)(offset / sizeof (OBJ_t)))%size;
 }
 
-FASTCALL DC_queue_object_t *__recalc_address (DC_queue_t *queue, DC_queue_object_t *ptr)
+FASTCALL OBJ_t *__recalc_address (DC_queue_t *queue, OBJ_t *ptr)
 {
   return  (queue->buf_ptr + __get_queue_offset (++ptr,
                                          queue->buf_ptr,
@@ -16,12 +18,12 @@ FASTCALL DC_queue_object_t *__recalc_address (DC_queue_t *queue, DC_queue_object
 
 err_t DC_queue_init (DC_queue_t *queue, 
                    uint32_t size, 
-                   DC_queue_object_t zero)
+                   OBJ_t zero)
 {
     int i = 0;
 
 
-    queue->buf_ptr = (DC_queue_object_t*)calloc (size, sizeof (DC_queue_object_t));
+    queue->buf_ptr = (OBJ_t*)DC_calloc (size, sizeof (OBJ_t));
     if (!queue->buf_ptr) {
         return E_SYSTEM;
     }
@@ -35,13 +37,13 @@ err_t DC_queue_init (DC_queue_t *queue,
     queue->tail_ptr = queue->head_ptr = queue->buf_ptr;
 
     if (ISERR (DC_thread_mutex_init (queue->t_mutex))) {
-        free (queue->buf_ptr);
+        DC_free (queue->buf_ptr);
         return E_ERROR;
     }
 
 
     if (ISERR (DC_thread_cond_init (queue->t_cond))) {
-        free (queue->buf_ptr);
+        DC_free (queue->buf_ptr);
         DC_thread_mutex_destroy (queue->t_mutex);
         return E_ERROR;
     }
@@ -83,7 +85,7 @@ bool_t DC_queue_is_full (DC_queue_t *queue)
 
 
 err_t DC_queue_add (DC_queue_t *queue, 
-                  DC_queue_object_t obj, 
+                  OBJ_t obj, 
                   bool_t block, 
                   uint32_t timeout)
 {
@@ -145,11 +147,11 @@ int DC_queue_get_length (DC_queue_t *queue)
     return err==E_OK?len:E_ERROR;
 }
 
-DC_queue_object_t DC_queue_fetch (DC_queue_t *queue, 
+OBJ_t DC_queue_fetch (DC_queue_t *queue, 
                                   bool_t block, 
                                   uint32_t timeout)
 {
-    DC_queue_object_t obj;
+    OBJ_t obj;
 
     if (ISERR (DC_thread_mutex_lock (queue->t_mutex))) {
         return queue->init_value;
@@ -198,7 +200,7 @@ void DC_queue_destroy (DC_queue_t *queue)
     DC_queue_clear (queue);
     
     if (queue->buf_ptr) {
-        free (queue->buf_ptr);
+        DC_free (queue->buf_ptr);
     }
 
     DC_thread_mutex_destroy (queue->t_mutex);

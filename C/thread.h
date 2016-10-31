@@ -9,6 +9,7 @@
 #include <pthread.h>
 #define DC_thread_t pthread_t
 #define DC_thread_mutex_t pthread_mutex_t
+#define DC_thread_rwlock_t pthread_rwlock_t
 #define DC_thread_cond_t pthread_cond_t
 
 #define __sys(x) (x)
@@ -22,32 +23,20 @@
 #define DC_thread_mutex_unlock(t) __sys(pthread_mutex_unlock(&t))
 #define DC_thread_mutex_trylock(t) __sys(pthread_mutex_trylock(&t))
 #define DC_thread_mutex_destroy(t) __sys(pthread_mutex_destroy(&t))
+#define DC_thread_rwlock_init(t) __sys(pthread_rwlock_init (&t, NULL))
+#define DC_thread_rwlock_rdlock(t) __sys(pthread_rwlock_rdlock (&t))
+#define DC_thread_rwlock_wrlock(t) __sys(pthread_rwlock_wrlock (&t))
+#define DC_thread_rwlock_unlock(t) __sys(pthread_rwlock_unlock(&t))
+#define DC_thread_rwlock_tryrdlock(t) __sys(pthread_rwlock_tryrdlock (&t))
+#define DC_thread_rwlock_trywrlock(t) __sys(pthread_rwlock_trywrlock (&t))
+#define DC_thread_rwlock_destroy(t) __sys(pthread_rwlock_destroy (&t))
 
 #define DC_thread_cond_init(t) __sys(pthread_cond_init(&t, NULL))
 #define DC_thread_cond_wait(t, m) __sys(pthread_cond_wait(&t, &m))
 
-static int DC_thread_cond_timedwait(DC_thread_cond_t t, 
+extern err_t DC_thread_cond_timedwait(DC_thread_cond_t t, 
                                     DC_thread_mutex_t m, 
-                                    uint32_t ms) {
-    struct timespec __time_to_wait;
-    struct timeval __now;
-
-    gettimeofday (&__now, NULL);
-    __time_to_wait.tv_sec = __now.tv_sec+((int)(ms/1000));
-    __time_to_wait.tv_nsec = __now.tv_usec * 1000+1000*1000*(ms%1000);
-    __time_to_wait.tv_sec += __time_to_wait.tv_nsec/(1000*1000*1000);
-    __time_to_wait.tv_nsec %= (1000*1000*1000);
-
-    if (ISERR (pthread_cond_timedwait (&t, &m, &__time_to_wait))) {
-        if (errno == ETIMEDOUT) {
-            return E_TIMEDOUT;
-        }
-
-        return E_SYSTEM;
-    }
-    
-    return E_OK;
-}
+                                    uint32_t ms);
 
 #define DC_thread_cond_signal(t) pthread_cond_signal(&t)
 #define DC_thread_cond_signal_all(t) pthread_cond_broadcast(&t)

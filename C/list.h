@@ -1,59 +1,52 @@
 #ifndef _DC_LIST_H
 #define _DC_LIST_H
 
-#include "libdc.h"
+#include "thread.h"
 #include "link.h"
+#include "list.h"
 
-DC_CPP(extern "C" {)
+CPP(extern "C" {)
+
+struct _DC_node {
+    DC_link_t link;
+    OBJ_t data;
+};
 
 typedef struct _DC_list 
 {
     unsigned int count;
-    LLVOID_t defvalue;
-    void (*remove_cb) (LLVOID_t, void*);
-    void *data;
-    DC_link_t elements;
+    OBJ_t        zero;
+    DC_link_t nodes;
+    DC_thread_rwlock_t rwlock;
 } DC_list_t;
 
-/*
- * initialize a variable of list type, which must be
- * ended with a NULL value.
- * example:
- *    DC_list_t list/
- *    char *name = "John";
- *    DC_list_init (&list, (void*)name, NULL);
- */
-extern int  DC_list_init (DC_list_t *list, 
-                          LLVOID_t defvalue,
-                          void (*cb)(LLVOID_t, void*),
-                          void *data,
-                          ...);
+extern err_t  DC_list_init (DC_list_t *list, 
+                          OBJ_t zero);
 
 // append a object at the end of list.
-extern int DC_list_add (DC_list_t *list, LLVOID_t);
+extern err_t DC_list_add (DC_list_t *list, OBJ_t);
 
 // insert a object with a index.
-extern int DC_list_insert_at_index (DC_list_t *list, LLVOID_t, unsigned int index);
+extern err_t DC_list_insert_at_index (DC_list_t *list, OBJ_t, uint32_t index);
 
 // get a object at the index.
-extern LLVOID_t DC_list_get_at_index (DC_list_t *list, unsigned int index);
+extern OBJ_t DC_list_get_at_index (DC_list_t *list, uint32_t index);
 
 // remove a object at the index from list.
-extern LLVOID_t DC_list_remove_at_index (DC_list_t *list,
-                                          unsigned int index);
+extern OBJ_t DC_list_remove_at_index (DC_list_t *list,
+                                          uint32_t index);
 
+extern uint32_t DC_list_get_length (DC_list_t *list);
 //
 extern void DC_list_clean (DC_list_t *list);
 
 // remove a object from list.
-extern void DC_list_remove (DC_list_t *list, LLVOID_t obj);
+extern err_t DC_list_remove (DC_list_t *list, OBJ_t obj);
 
-extern LLVOID_t DC_list_next (const DC_list_t *list,  void**saveptr);
-
-extern void DC_list_loop (const DC_list_t *list, int (*cb)(LLVOID_t));
+extern OBJ_t DC_list_next (DC_list_t *list,  void**saveptr);
 
 extern void DC_list_destroy (DC_list_t *list);
 
 
-DC_CPP(})
+CPP(})
 #endif

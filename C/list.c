@@ -1,216 +1,197 @@
+#include "mm.h"
 #include "list.h"
+#include "errcode.h"
 
-struct __list_node {
-	DC_link_t link;
-	LLVOID_t atom;
-};
-
-struct __list_node *__find_elem_at_index (DC_list_t *list,
-                                      unsigned int index,
-                                      int *flag) {
-    register DC_link_t *linkptr = NULL;
-
-    if (index > list->count - 1) {
-        return NULL;
-    }
-
-    if (index < (int)((list->count - 1)/2)) {
-        DC_link_foreach (linkptr,
-                         list->elements,
-                         1) {
-        	if (index <= 0) {
-        		break;
-        	}
-        	index--;
-        }
-        if (flag) *flag = 1;
-    } else {
-        index = (list->count - 1) - index;
-        DC_link_foreach (linkptr,
-                         list->elements,
-                         0) {
-        	if (index <= 0) break;
-        	index--;
-        }
-        if (flag) *flag = 0;
-    }
-
-    return DC_link_container_of(linkptr, struct __list_node, link);
-}
-
-int  DC_list_init (DC_list_t *list, 
-				   LLVOID_t derval,
-				   void (*cb) (LLVOID_t, void*),
-				   void *data,
-                   ...) {
-    LLVOID_t arg;
-    va_list ap;
-
+err_t  DC_list_init (DC_list_t *list,
+                   OBJ_t zero) 
+{
     memset (list, '\0', sizeof (DC_list_t));
-
-    DC_link_init (list->elements);
-    list->data = data;
-    list->remove_cb = cb;
-    va_start (ap, data);
-    while ((arg = va_arg (ap, LLVOID_t))) {
-        DC_list_add (list, arg);
-    }
-    va_end (ap);
-
-    return ERR_OK;
-}
-
-int DC_list_add (DC_list_t *list, LLVOID_t data) {
-	struct __list_node *node = NULL;
-
-	if ((node = DC_malloc (sizeof (struct __list_node)))) {
-		node->atom = data;
-		DC_link_add (list->elements.prev, &node->link);
-	}
-    list->count++;
-    return ERR_OK;
-}
-
-int DC_list_insert_at_index (DC_list_t *list,
-                             LLVOID_t data,
-                             unsigned int index)
-{
-    struct __list_node *node = NULL;
-    struct __list_node *newnode = NULL;
-
-    if ((newnode = DC_malloc (sizeof (struct __list_node)))) {
-    	if (!(node = __find_elem_at_index (list, index, NULL))) {
-    		DC_free (newnode);
-    		return ERR_FAILURE;
-    	}
-    	newnode->atom = data;
-    	DC_link_add (node->link.prev, &newnode->link);
-    	list->count++;
-
-    	return ERR_OK;
+    DC_link_init_ring (list->nodes);
+    list->count = 0;
+    if (ISERR(DC_thread_rwlock_init (list->rwlock))) {
+        return E_ERROR;
     }
 
-    return ERR_FAILURE;
+    return E_OK;
 }
 
-LLVOID_t DC_list_get_at_index (DC_list_t *list, unsigned int index) {
-    struct __list_node *node;
+err_t DC_list_add (DC_list_t *list, OBJ_t data) {
+    struct _DC_node *node = NULL;
 
-    if (!(node = __find_elem_at_index (list, index, NULL))) {
-    	return list->defvalue;
-    }
-
-    return node->atom;
-}
-
-LLVOID_t DC_list_remove_at_index (DC_list_t *list, unsigned int index) {
+    DC_thread_rwlock_wrlock (list->rwlock);
     
-    struct __list_node *node = NULL;
-    LLVOID_t value;
-
-    if ((node = __find_elem_at_index (list, index, NULL))) {
-		if (list->remove_cb) {
-			list->remove_cb(node->atom, list->data);
-		}
-    	DC_link_remove (&node->link);
-    	list->count--;
-    	value = node->atom;
-    	DC_free (node);
-    	return value;
+    if ((node = DC_malloc (sizeof (struct _DC_node)))) {
+        node->data = data;
+	DC_link_add (list->nodes.prev, &node->link);
     }
 
-    return list->defvalue;
+    list->count++;
+    DC_thread_rwlock_unlock (list->rwlock);
+
+    return E_OK;
 }
 
-void DC_list_remove (DC_list_t *list, LLVOID_t data)
+err_t DC_list_insert_at_index (DC_list_t *list,
+                             OBJ_t data,
+                             uint32_t index)
 {
-	register DC_link_t *linkptr;
-	struct __list_node *node;
+    struct _DC_node *newnode = NULL;
+    DC_link_t *linkptr = NULL;
 
-	DC_link_foreach (linkptr, list->elements, 1) {
-		node = DC_link_container_of (linkptr, struct __list_node, link);
-		if (node->atom == data) {
-			if (list->remove_cb) {
-				list->remove_cb (node->atom, list->data);
-			}
-			DC_link_remove (&node->link);
-			list->count--;
-			DC_free (node);
-			break;
-		}
-	}
+    DC_thread_rwlock_wrlock (list->rwlock);
+
+    if (index >= list->count) {
+        DC_set_errcode (E_OUTOFBOUND);
+        DC_thread_rwlock_unlock (list->rwlock);
+        return E_ERROR;
+    }
+
+    if ((newnode = DC_malloc (sizeof (struct _DC_node)))) {
+        newnode->data = data;
+
+        DC_link_foreach (linkptr, list->nodes) {
+            if (index <= 0) break;
+            index--;
+        }
+
+        DC_link_add (linkptr->prev, &newnode->link);
+        list->count++;
+    }
+
+    DC_thread_rwlock_unlock (list->rwlock);
+    return E_OK;
 }
+
+OBJ_t DC_list_get_at_index (DC_list_t *list, uint32_t index) {
+    struct _DC_node *node;
+    DC_link_t *ptr; 
+  
+    DC_thread_rwlock_rdlock (list->rwlock);
+
+    if (index >= list->count) {
+        DC_set_errcode (E_OUTOFBOUND);
+        DC_thread_rwlock_unlock (list->rwlock);
+        return list->zero;
+    }
+
+    DC_link_foreach (ptr, list->nodes) {
+        if (index <= 0) break;
+        index--;
+    }
+
+    node = DC_link_container_of (ptr, struct _DC_node, link);
+    DC_thread_rwlock_unlock (list->rwlock);
+
+    return node->data;
+}
+
+OBJ_t DC_list_remove_at_index (DC_list_t *list, uint32_t index) {
+    
+    struct _DC_node *node = NULL;
+    OBJ_t value;
+    DC_link_t *ptr = NULL;
+
+    DC_thread_rwlock_wrlock (list->rwlock);
+
+    if (index >= list->count) {
+        DC_set_errcode (E_OUTOFBOUND);
+        DC_thread_rwlock_unlock (list->rwlock);
+        return list->zero;
+    }
+
+    DC_link_foreach (ptr, list->nodes) {
+        if (index <= 0) break;
+        index--;
+    }
+
+    node = DC_link_container_of (ptr, struct _DC_node, link);
+    DC_link_remove (ptr);
+    list->count--;
+    value = node->data;
+    DC_free (node);
+    DC_thread_rwlock_unlock (list->rwlock);
+
+    return value;
+}
+
+err_t DC_list_remove (DC_list_t *list, OBJ_t data)
+{
+    DC_link_t *ptr;
+    struct _DC_node *node;
+
+    DC_thread_rwlock_wrlock (list->rwlock);
+
+    DC_link_foreach (ptr, list->nodes) {
+        node = DC_link_container_of (ptr, struct _DC_node, link);
+        if (node->data == data) {
+            DC_link_remove (ptr);
+            list->count--;
+            DC_free (node);
+            break;
+        }
+    }
+
+    DC_thread_rwlock_unlock (list->rwlock);
+    return E_OK;
+}
+
+uint32_t DC_list_get_length (DC_list_t *list)
+{
+    uint32_t c = 0;
+
+    DC_thread_rwlock_rdlock (list->rwlock);
+
+    c = list->count;
+    DC_thread_rwlock_unlock (list->rwlock);
+
+    return c;
+}
+
 
 void DC_list_clean (DC_list_t *list)
 {
-    while (list->count > 0) {
+    while (DC_list_get_length (list) > 0) {
         DC_list_remove_at_index (list, 0);
     }
 }
 
 void DC_list_destroy (DC_list_t *list) {
     DC_list_clean (list);
+    DC_thread_rwlock_destroy (list->rwlock);
 }
 
-void DC_list_loop (const DC_list_t *list, int (*cb)(LLVOID_t))
-{
-	register DC_link_t *linkptr;
-	struct __list_node *node;
 
-	DC_link_foreach (linkptr, list->elements, 1) {
-		node = DC_link_container_of (linkptr, struct __list_node, link);
-		if (cb) cb (node->atom);
-	}
-}
-
-LLVOID_t DC_list_next (const DC_list_t *list, void **saveptr)
+OBJ_t DC_list_next (DC_list_t *list, void **saveptr)
 {
     register DC_link_t *cur = (DC_link_t*)*saveptr;
-    struct __list_node *node = NULL;
+    struct _DC_node *node = NULL;
+    OBJ_t obj = list->zero;
 
-   // static DC_link_t *head_ptr = NULL,*tail_ptr = NULL;
+    DC_thread_rwlock_rdlock (list->rwlock);
 
     if (cur == NULL) {
-        cur = list->elements.next;
+        cur = list->nodes.next;
     }
 
-    if (cur != &list->elements) {
-    	node = DC_link_container_of (cur, struct __list_node, link);
+    if (cur != &list->nodes) {
+    	node = DC_link_container_of (cur, struct _DC_node, link);
     	*saveptr = cur->next;
-    	return node->atom;
+        obj = node->data;
+        
     }
 
-    return list->defvalue;
+    DC_thread_rwlock_unlock (list->rwlock);
+    return obj;
 }
 
 /*
-DC_list_elem_t **DC_list_to_array (const DC_list_t *list, int *num)
-{
-    DC_list_elem_t **array = NULL;
-    void *saveptr = NULL;
-    int  i = 0;
-    DC_list_elem_t *obj = NULL;
-
-    *num = 0;
-    if (list->count) {
-        array = (DC_list_elem_t**)calloc (list->count, sizeof (DC_list_elem_t*));
-        if (array) {
-            while ((obj = DC_list_next_object (list, &saveptr))) {
-                array[i++] = obj;
-            }
-        }
-    }
- 
-    *num = i;
-    return array;
-}
 */
 #ifdef LIST_DEBUG
 
 void print_list(DC_list_t *list)
 {
-   printf ("List elements: %d: \n", list->count);
-   LLVOID_t elem;
+   printf ("List nodes: %d: \n", list->count);
+   OBJ_t elem;
    void *saveptr = NULL;
 
    while ((elem = DC_list_next (list, &saveptr))) {
@@ -220,7 +201,7 @@ void print_list(DC_list_t *list)
 
 int main () {
     DC_list_t list;
-    LLVOID_t elem;
+    OBJ_t elem;
     int i;
 
     if (DC_list_init (&list, 0, NULL, NULL, NULL) < 0) {
@@ -229,7 +210,7 @@ int main () {
     }
 
     for (i=1; i<10; i++) {
-        DC_list_add (&list, (LLVOID_t)i);
+        DC_list_add (&list, (OBJ_t)i);
     }
     print_list (&list);
 

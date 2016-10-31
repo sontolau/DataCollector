@@ -10,6 +10,8 @@ enum {
     E_FULL,
     E_EMPTY,
     E_TIMEDOUT,
+    E_NOMEM,
+    E_OUTOFBOUND,
 };
 
 #ifdef WINDOWS

@@ -1,7 +1,7 @@
 #include "libdc.h"
 #include "str.h"
 
-const char *DC_strip (char *str)
+char *DC_strip (char *str)
 {
     register char *ptr = str + strlen (str) - 1;
 
@@ -19,7 +19,7 @@ const char *DC_strip (char *str)
     return ptr;
 }
 
-const char *DC_strtok (char **str, const char *delim)
+char *DC_strtok (char **str, const char *delim)
 {
     char *tail = *str, *head = *str;
     int len = strlen (delim);

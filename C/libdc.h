@@ -32,7 +32,8 @@ typedef uint8_t bool_t;
 
 typedef uint8_t bool_t;
 typedef uint32_t err_t;
-
+typedef unsigned long long OBJ_t;
+typedef long long KEY_t;
 #ifdef __cplusplus
 #define CPP(x)   x
 #else
