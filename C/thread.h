@@ -6,7 +6,9 @@
 
 #ifdef WINDOWS
 #else
+
 #include <pthread.h>
+
 #define DC_thread_t pthread_t
 #define DC_thread_mutex_t pthread_mutex_t
 #define DC_thread_rwlock_t pthread_rwlock_t
@@ -34,9 +36,9 @@
 #define DC_thread_cond_init(t) __sys(pthread_cond_init(&t, NULL))
 #define DC_thread_cond_wait(t, m) __sys(pthread_cond_wait(&t, &m))
 
-extern err_t DC_thread_cond_timedwait(DC_thread_cond_t t, 
-                                    DC_thread_mutex_t m, 
-                                    uint32_t ms);
+extern err_t DC_thread_cond_timedwait(DC_thread_cond_t t,
+                                      DC_thread_mutex_t m,
+                                      uint32_t ms);
 
 #define DC_thread_cond_signal(t) pthread_cond_signal(&t)
 #define DC_thread_cond_signal_all(t) pthread_cond_broadcast(&t)

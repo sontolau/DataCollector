@@ -5,7 +5,9 @@
 #include <windows.h>
 #define OS_WINDOWS
 #else
+
 #include <unistd.h>
+
 #endif
 
 #include <stdio.h>
@@ -16,6 +18,7 @@
 
 #ifdef OS_WINDOWS
 #else
+
 #include <sys/types.h>
 #include <errno.h>
 #include <pthread.h>
@@ -27,6 +30,7 @@
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+
 typedef uint8_t bool_t;
 #endif
 
@@ -34,6 +38,7 @@ typedef uint8_t bool_t;
 typedef uint32_t err_t;
 typedef unsigned long long OBJ_t;
 typedef long long KEY_t;
+typedef unsigned long long ID_t;
 #ifdef __cplusplus
 #define CPP(x)   x
 #else
@@ -45,7 +50,7 @@ typedef long long KEY_t;
 #define FASTCALL inline
 #else
 #define INLINE static
-#define FASTCALL 
+#define FASTCALL
 #endif
 
 #ifndef ERR
@@ -94,11 +99,11 @@ typedef long long KEY_t;
 #endif
 
 #ifndef MAX
-#define MAX(a,b)  (a>b?a:b)
+#define MAX(a, b)  (a>b?a:b)
 #endif
 
 #ifndef MIN
-#define MIN(a,b)  (a>b?b:a)
+#define MIN(a, b)  (a>b?b:a)
 #endif
 
 #endif
