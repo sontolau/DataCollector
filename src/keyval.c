@@ -346,7 +346,7 @@ void DC_keyval_array_loop (DC_keyval_t *kv, int (*cb) (DC_keyval_t*, void*), voi
 uint32_t DC_keyval_get_length(const DC_keyval_t *kvrry) {
     int i = 0;
 
-    for (int i = 0; !KV_IS_NULL(kvrry[i]); ++i);
+    for (i = 0; !KV_IS_NULL(kvrry[i]); ++i);
 
     return ++i;
 }

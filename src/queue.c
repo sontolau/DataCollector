@@ -8,7 +8,7 @@ FASTCALL unsigned long long __get_queue_offset(OBJ_t *curpos, OBJ_t *startpos, i
     return ((int) (offset / sizeof(OBJ_t))) % size;
 }
 
-FASTCALL CDECL OBJ_t *__recalc_address(DC_queue_t *queue, OBJ_t *ptr) {
+FASTCALL  OBJ_t *__recalc_address(DC_queue_t *queue, OBJ_t *ptr) {
     return (queue->buf_ptr + __get_queue_offset(++ptr,
                                                 queue->buf_ptr,
                                                 queue->size));
