@@ -17,7 +17,7 @@ FASTCALL DC_list_t *__list_entry(DC_list_t *map,
     return &map[id % size];
 }
 
-OBJ_t __find_hash_elem(DC_hash_t *hash, KEY_t key) {
+FASTCALL OBJ_t __find_hash_elem(DC_hash_t *hash, KEY_t key) {
     DC_list_t *list;
     OBJ_t obj;
     void *saveptr = NULL;
@@ -54,7 +54,7 @@ err_t DC_hash_init(DC_hash_t *hash,
         return E_ERROR;
     }
 
-    if (ISERR (DC_thread_rwlock_init(hash->rwlock))) {
+    if (ISERR (DC_thread_rwlock_init(&hash->rwlock))) {
         DC_free (list_map);
         return E_ERROR;
     }
@@ -77,7 +77,7 @@ err_t DC_hash_init(DC_hash_t *hash,
 err_t DC_hash_add_object(DC_hash_t *hash, KEY_t key, OBJ_t obj) {
     DC_list_t *list;
 
-    DC_thread_rwlock_wrlock (hash->rwlock);
+    DC_thread_rwlock_wrlock(&hash->rwlock);
 
     list = __list_entry(hash->hash_map,
                         hash->size,
@@ -86,7 +86,7 @@ err_t DC_hash_add_object(DC_hash_t *hash, KEY_t key, OBJ_t obj) {
                         hash->data);
     hash->count++;
     DC_list_insert_at_index(list, obj, 0);
-    DC_thread_rwlock_unlock (hash->rwlock);
+    DC_thread_rwlock_unlock(&hash->rwlock);
 
     return E_OK;
 }
@@ -95,9 +95,9 @@ err_t DC_hash_add_object(DC_hash_t *hash, KEY_t key, OBJ_t obj) {
 OBJ_t DC_hash_get_object(DC_hash_t *hash, KEY_t key) {
     OBJ_t obj = hash->zero;
 
-    DC_thread_rwlock_rdlock (hash->rwlock);
+    DC_thread_rwlock_rdlock(&hash->rwlock);
     obj = __find_hash_elem(hash, key);
-    DC_thread_rwlock_unlock (hash->rwlock);
+    DC_thread_rwlock_unlock(&hash->rwlock);
     return obj;
 }
 
@@ -109,7 +109,7 @@ OBJ_t *DC_hash_get_all_objects(DC_hash_t *hash, uint32_t *num) {
 
     *num = 0;
 
-    DC_thread_rwlock_rdlock (hash->rwlock);
+    DC_thread_rwlock_rdlock(&hash->rwlock);
 
     if (hash->count > 0) {
         objects = (OBJ_t *) DC_calloc (hash->count + 1, sizeof(OBJ_t));
@@ -124,7 +124,7 @@ OBJ_t *DC_hash_get_all_objects(DC_hash_t *hash, uint32_t *num) {
 
     *num = j;
 
-    DC_thread_rwlock_unlock (hash->rwlock);
+    DC_thread_rwlock_unlock(&hash->rwlock);
 
     return objects;
 }
@@ -133,7 +133,7 @@ OBJ_t DC_hash_remove_object(DC_hash_t *hash, KEY_t key) {
     DC_list_t *list;
     OBJ_t elem = hash->zero;
 
-    DC_thread_rwlock_wrlock (hash->rwlock);
+    DC_thread_rwlock_wrlock(&hash->rwlock);
     list = __list_entry(hash->hash_map,
                         hash->size,
                         key,
@@ -145,7 +145,7 @@ OBJ_t DC_hash_remove_object(DC_hash_t *hash, KEY_t key) {
         hash->count--;
     }
 
-    DC_thread_rwlock_unlock (hash->rwlock);
+    DC_thread_rwlock_unlock(&hash->rwlock);
 
     return elem;
 }
@@ -153,17 +153,17 @@ OBJ_t DC_hash_remove_object(DC_hash_t *hash, KEY_t key) {
 void DC_hash_clear(DC_hash_t *hash) {
     int i;
 
-    DC_thread_rwlock_wrlock (hash->rwlock);
+    DC_thread_rwlock_wrlock(&hash->rwlock);
     for (i = 0; i < hash->size; i++) {
         DC_list_clean(&hash->hash_map[i]);
     }
-    DC_thread_rwlock_unlock (hash->rwlock);
+    DC_thread_rwlock_unlock(&hash->rwlock);
 }
 
 void DC_hash_destroy(DC_hash_t *hash) {
     DC_hash_clear(hash);
     DC_free (hash->hash_map);
-    DC_thread_rwlock_destroy (hash->rwlock);
+    DC_thread_rwlock_destroy(&hash->rwlock);
 }
 
 #ifdef HASH_DEBUG

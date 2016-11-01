@@ -12,9 +12,12 @@ enum {
     E_TIMEDOUT,
     E_NOMEM,
     E_OUTOFBOUND,
+    E_UNSUPPORTED,
 };
 
-#ifdef WINDOWS
+#ifdef OS_WINDOWS
+#define DC_get_errcode() GetLastError()
+#define DC_set_errcode(x) SetLastError(x)
 #else
 #include <errno.h>
 #define DC_set_errcode(x) (errno = x)

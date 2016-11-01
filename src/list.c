@@ -7,7 +7,7 @@ err_t DC_list_init(DC_list_t *list,
     memset(list, '\0', sizeof(DC_list_t));
     DC_link_init_ring (list->nodes);
     list->count = 0;
-    if (ISERR(DC_thread_rwlock_init(list->rwlock))) {
+    if (ISERR(DC_thread_rwlock_init(&list->rwlock))) {
         return E_ERROR;
     }
 
@@ -17,7 +17,7 @@ err_t DC_list_init(DC_list_t *list,
 err_t DC_list_add(DC_list_t *list, OBJ_t data) {
     struct _DC_node *node = NULL;
 
-    DC_thread_rwlock_wrlock (list->rwlock);
+    DC_thread_rwlock_wrlock(&list->rwlock);
 
     if ((node = DC_malloc (sizeof(struct _DC_node)))) {
         node->data = data;
@@ -25,7 +25,7 @@ err_t DC_list_add(DC_list_t *list, OBJ_t data) {
     }
 
     list->count++;
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
 
     return E_OK;
 }
@@ -36,11 +36,11 @@ err_t DC_list_insert_at_index(DC_list_t *list,
     struct _DC_node *newnode = NULL;
     DC_link_t *linkptr = NULL;
 
-    DC_thread_rwlock_wrlock (list->rwlock);
+    DC_thread_rwlock_wrlock(&list->rwlock);
 
     if (index >= list->count) {
         DC_set_errcode (E_OUTOFBOUND);
-        DC_thread_rwlock_unlock (list->rwlock);
+        DC_thread_rwlock_unlock(&list->rwlock);
         return E_ERROR;
     }
 
@@ -56,7 +56,7 @@ err_t DC_list_insert_at_index(DC_list_t *list,
         list->count++;
     }
 
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
     return E_OK;
 }
 
@@ -64,11 +64,11 @@ OBJ_t DC_list_get_at_index(DC_list_t *list, uint32_t index) {
     struct _DC_node *node;
     DC_link_t *ptr;
 
-    DC_thread_rwlock_rdlock (list->rwlock);
+    DC_thread_rwlock_rdlock(&list->rwlock);
 
     if (index >= list->count) {
         DC_set_errcode (E_OUTOFBOUND);
-        DC_thread_rwlock_unlock (list->rwlock);
+        DC_thread_rwlock_unlock(&list->rwlock);
         return list->zero;
     }
 
@@ -78,7 +78,7 @@ OBJ_t DC_list_get_at_index(DC_list_t *list, uint32_t index) {
     }
 
     node = DC_link_container_of (ptr, struct _DC_node, link);
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
 
     return node->data;
 }
@@ -89,11 +89,11 @@ OBJ_t DC_list_remove_at_index(DC_list_t *list, uint32_t index) {
     OBJ_t value;
     DC_link_t *ptr = NULL;
 
-    DC_thread_rwlock_wrlock (list->rwlock);
+    DC_thread_rwlock_wrlock(&list->rwlock);
 
     if (index >= list->count) {
         DC_set_errcode (E_OUTOFBOUND);
-        DC_thread_rwlock_unlock (list->rwlock);
+        DC_thread_rwlock_unlock(&list->rwlock);
         return list->zero;
     }
 
@@ -107,7 +107,7 @@ OBJ_t DC_list_remove_at_index(DC_list_t *list, uint32_t index) {
     list->count--;
     value = node->data;
     DC_free (node);
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
 
     return value;
 }
@@ -116,7 +116,7 @@ err_t DC_list_remove(DC_list_t *list, OBJ_t data) {
     DC_link_t *ptr;
     struct _DC_node *node;
 
-    DC_thread_rwlock_wrlock (list->rwlock);
+    DC_thread_rwlock_wrlock(&list->rwlock);
 
     DC_link_foreach (ptr, list->nodes) {
         node = DC_link_container_of (ptr, struct _DC_node, link);
@@ -128,17 +128,17 @@ err_t DC_list_remove(DC_list_t *list, OBJ_t data) {
         }
     }
 
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
     return E_OK;
 }
 
 uint32_t DC_list_get_length(DC_list_t *list) {
     uint32_t c = 0;
 
-    DC_thread_rwlock_rdlock (list->rwlock);
+    DC_thread_rwlock_rdlock(&list->rwlock);
 
     c = list->count;
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
 
     return c;
 }
@@ -152,7 +152,7 @@ void DC_list_clean(DC_list_t *list) {
 
 void DC_list_destroy(DC_list_t *list) {
     DC_list_clean(list);
-    DC_thread_rwlock_destroy (list->rwlock);
+    DC_thread_rwlock_destroy(&list->rwlock);
 }
 
 
@@ -161,7 +161,7 @@ OBJ_t DC_list_next(DC_list_t *list, void **saveptr) {
     struct _DC_node *node = NULL;
     OBJ_t obj = list->zero;
 
-    DC_thread_rwlock_rdlock (list->rwlock);
+    DC_thread_rwlock_rdlock(&list->rwlock);
 
     if (cur == NULL) {
         cur = list->nodes.next;
@@ -174,7 +174,7 @@ OBJ_t DC_list_next(DC_list_t *list, void **saveptr) {
 
     }
 
-    DC_thread_rwlock_unlock (list->rwlock);
+    DC_thread_rwlock_unlock(&list->rwlock);
     return obj;
 }
 

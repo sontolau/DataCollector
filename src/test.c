@@ -1,8 +1,10 @@
+#include "libdc.h"
 #include "queue.h"
 #include <signal.h>
 #include "conf.h"
 #include "list.h"
 
+#ifndef OS_WINDOWS
 DC_queue_t queue;
 unsigned int x = 0;
 unsigned int y = 0;
@@ -20,9 +22,9 @@ void sig(int s) {
 }
 
 void *print_func(void *data) {
-    obj_t e;
+    OBJ_t e;
 
-    while ((e = DC_queue_fetch(&queue, TRUE, 0)) != (obj_t) NULL) {
+    while ((e = DC_queue_fetch(&queue, TRUE, 0)) != (OBJ_t) NULL) {
         y++;
         //fprintf (stderr, "Reading: %u\n", e);
     }
@@ -42,7 +44,7 @@ int func()
 }
 
 void print_list(DC_list_t *list) {
-    obj_t obj;
+    OBJ_t obj;
     void *data = NULL;
 
     printf("[");
@@ -59,8 +61,8 @@ void main(int argc, char *argv[]) {
     DC_thread_t t;
     time_t tm;
 
-    DC_thread_create (t, print_func, NULL);
     DC_queue_init (&queue, 100, 0);
+    DC_thread_create (&t, print_func, NULL);
     signal (SIGALRM, sig);
     //signal (SIGINT, sig);
     alarm (1);
@@ -69,7 +71,7 @@ void main(int argc, char *argv[]) {
     while (!ext) {
         tm = (time(NULL)/1000);
         //fprintf (stderr, "Writing : %u\n", t);
-        if (ISERR (DC_queue_add (&queue, (obj_t)tm, TRUE, 0))) {
+        if (ISERR (DC_queue_add (&queue, (OBJ_t)tm, TRUE, 0))) {
             fprintf (stderr, "Queue is error\n");
             break;
         }
@@ -83,7 +85,7 @@ void main(int argc, char *argv[]) {
     int i = 0;
     DC_list_t list;
 
-    DC_list_init (&list, (obj_t)0);
+    DC_list_init (&list, (OBJ_t)0);
 
     printf ("Insert 10 numbers (from 1-10):\n");
     for (i=0; i<10; i++) {
@@ -109,3 +111,5 @@ void main(int argc, char *argv[]) {
     DC_list_destroy (&list);
 #endif
 }
+
+#endif

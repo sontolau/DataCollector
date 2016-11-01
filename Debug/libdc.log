@@ -1,0 +1,28 @@
+﻿  thread.c
+  test.c
+  str.c
+  queue.c
+src\queue.c(30): warning C4018: “<”: 有符号/无符号不匹配
+  object.c
+  main.c
+  list.c
+  link.c
+  keyval.c
+  hash.c
+src\hash.c(62): warning C4018: “<”: 有符号/无符号不匹配
+src\hash.c(118): warning C4018: “<”: 有符号/无符号不匹配
+src\hash.c(157): warning C4018: “<”: 有符号/无符号不匹配
+  conf.c
+src\conf.c(37): warning C4996: 'strncpy': This function or variable may be unsafe. Consider using strncpy_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  C:\Program Files (x86)\Windows Kits\10\Include\10.0.10240.0\ucrt\string.h(346): note: 参见“strncpy”的声明
+src\conf.c(55): warning C4996: 'fopen': This function or variable may be unsafe. Consider using fopen_s instead. To disable deprecation, use _CRT_SECURE_NO_WARNINGS. See online help for details.
+  C:\Program Files (x86)\Windows Kits\10\Include\10.0.10240.0\ucrt\stdio.h(205): note: 参见“fopen”的声明
+  正在运行 C/C++ 代码分析...
+  正在生成代码...
+c:\users\administrator\workspace\datacollector\src\thread.c(259): warning C4715: “DC_thread_cond_wait”: 不是所有的控件路径都返回值
+  libdc.vcxproj -> C:\Users\Administrator\Workspace\DataCollector\Debug\libdc.lib
+c:\users\administrator\workspace\datacollector\src\keyval.c(416): warning C6011: 取消对 NULL 指针“ptr”的引用。
+c:\users\administrator\workspace\datacollector\src\list.c(55): warning C6011: 取消对 NULL 指针“linkptr”的引用。
+c:\users\administrator\workspace\datacollector\src\list.c(83): warning C6011: 取消对 NULL 指针“node”的引用。
+c:\users\administrator\workspace\datacollector\src\list.c(108): warning C6011: 取消对 NULL 指针“node”的引用。
+c:\users\administrator\workspace\datacollector\src\str.c(106): warning C28182: 取消对 NULL 指针的引用。“p1”包含与“realloc()`101”相同的 NULL 值。

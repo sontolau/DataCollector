@@ -17,8 +17,6 @@ typedef struct _DC_queue {
     DC_thread_cond_t t_cond;
 } DC_queue_t;
 
-typedef DC_queue_t DC_fifo_queue_t;
-
 extern err_t DC_queue_init(__in__ DC_queue_t *queue,
                            uint32_t size,
                            OBJ_t init_value);

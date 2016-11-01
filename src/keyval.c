@@ -1,8 +1,7 @@
-#include <json.h>
 #include "keyval.h"
-#include "log.h"
 
 #ifdef USE_JSON_C
+#include <json.h>
 FASTCALL DC_keyval_t *keyval_from_json(json_object *);
 
 FASTCALL DC_keyval_t *keyval_from_array(json_object *object) {
@@ -346,9 +345,8 @@ void DC_keyval_array_loop (DC_keyval_t *kv, int (*cb) (DC_keyval_t*, void*), voi
 */
 uint32_t DC_keyval_get_length(const DC_keyval_t *kvrry) {
     int i = 0;
-    register DC_keyval_t *ptr;
 
-    for (int i = 0; !KV_IS_NULL(kvrry[i].key); ++i);
+    for (int i = 0; !KV_IS_NULL(kvrry[i]); ++i);
 
     return ++i;
 }
@@ -410,30 +408,7 @@ void DC_keyval_iterator(DC_keyval_t *kvset,
     }
 }
 
-void DC_keyval_free(DC_keyval_t *kv)
-//void DC_keyval_free_zone (DC_keyval_t *kv)
-{
-    register DC_keyval_t *ptr;
-
-    if (kv == NULL) return;
-
-    DC_keyval_array_foreach(ptr, kv)
-    {
-        switch (ptr->type) {
-            case KV_TYPE_STRING:
-                break;
-            case KV_TYPE_ARRAY:
-            case KV_TYPE_KEYVAL:
-                DC_keyval_array_free_json(ptr->keyval_value);
-                free(ptr->keyval_value);
-                break;
-            default:
-                break;
-        }
-    }
-}
-
-DC_keyval_t *DC_keyval_find(const DC_keyval_t *kvset, const char *key) {
+DC_keyval_t *DC_keyval_find(DC_keyval_t *kvset, const char *key) {
     DC_keyval_t *ptr = NULL;
     int i;
 
@@ -446,12 +421,12 @@ DC_keyval_t *DC_keyval_find(const DC_keyval_t *kvset, const char *key) {
     return NULL;
 }
 
-DC_keyval_t *DC_keyval_find_path(const DC_keyval_t *kvset, const char *path[]) {
+DC_keyval_t *DC_keyval_find_path(DC_keyval_t *kvset, const char *const path[]) {
     DC_keyval_t *ptr = NULL;
 
     if ((ptr = DC_keyval_find(kvset, path[0]))) {
         if (ptr->type == KV_TYPE_KEYVAL && path[1]) {
-            return DC_keyval_find_path(ptr->keyval_value, path[1]);
+            return DC_keyval_find_path(ptr->keyval_value, &path[1]);
         } else {
             return NULL;
         }

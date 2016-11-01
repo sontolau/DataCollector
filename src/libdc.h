@@ -38,6 +38,8 @@ typedef unsigned int uint32_t;
 #include <arpa/inet.h>
 #include <fcntl.h>
 #include <assert.h>
+
+#define CDECL __cdecl
 #endif
 
 typedef uint8_t bool_t;
@@ -45,6 +47,8 @@ typedef int32_t err_t;
 typedef unsigned long long OBJ_t;
 typedef long long KEY_t;
 typedef unsigned long long ID_t;
+
+
 #ifdef __cplusplus
 #define CPP(x)   x
 #else
@@ -52,11 +56,9 @@ typedef unsigned long long ID_t;
 #endif
 
 #if __STDC_VERSION__ >= 199901L || __GNUC__ >= 3
-#define INLINE static inline
-#define FASTCALL inline
+#define FASTCALL static inline
 #else
-#define INLINE static
-#define FASTCALL
+#define FASTCALL static
 #endif
 
 #ifndef ERR

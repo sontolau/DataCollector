@@ -1,5 +1,6 @@
 #include "object.h"
 
+#if 0
 
 static DC_object_t *__alloc_zone (const char *cls,
                                   unsigned int szcls,
@@ -79,4 +80,4 @@ DC_object_t *DC_object_incref(DC_object_t *obj) {
 int DC_object_get_refcount(DC_object_t *obj) {
 	return obj ? obj->refcount : 0;
 }
-
+#endif

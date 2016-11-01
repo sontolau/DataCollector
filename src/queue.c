@@ -8,7 +8,7 @@ FASTCALL unsigned long long __get_queue_offset(OBJ_t *curpos, OBJ_t *startpos, i
     return ((int) (offset / sizeof(OBJ_t))) % size;
 }
 
-FASTCALL OBJ_t *__recalc_address(DC_queue_t *queue, OBJ_t *ptr) {
+FASTCALL CDECL OBJ_t *__recalc_address(DC_queue_t *queue, OBJ_t *ptr) {
     return (queue->buf_ptr + __get_queue_offset(++ptr,
                                                 queue->buf_ptr,
                                                 queue->size));
@@ -33,15 +33,15 @@ err_t DC_queue_init(DC_queue_t *queue,
 
     queue->tail_ptr = queue->head_ptr = queue->buf_ptr;
 
-    if (ISERR (DC_thread_mutex_init(queue->t_mutex))) {
+    if (ISERR (DC_thread_mutex_init(&queue->t_mutex))) {
         DC_free (queue->buf_ptr);
         return E_ERROR;
     }
 
 
-    if (ISERR (DC_thread_cond_init(queue->t_cond))) {
+    if (ISERR (DC_thread_cond_init(&queue->t_cond))) {
         DC_free (queue->buf_ptr);
-        DC_thread_mutex_destroy (queue->t_mutex);
+        DC_thread_mutex_destroy(&queue->t_mutex);
         return E_ERROR;
     }
 
@@ -50,10 +50,10 @@ err_t DC_queue_init(DC_queue_t *queue,
 }
 
 #define QUEUE_EMPTY(queue) ((queue->tail_ptr == queue->head_ptr &&\
-           *queue->head_ptr== queue->init_value?TRUE:FALSE))
+           *queue->head_ptr== queue->init_value)?TRUE:FALSE)
 
 #define QUEUE_FULL(queue) ((queue->tail_ptr == queue->head_ptr &&\
-             *queue->head_ptr != queue->init_value?TRUE:FALSE))
+             *queue->head_ptr != queue->init_value)?TRUE:FALSE)
 
 bool_t DC_queue_is_empty(DC_queue_t *queue) {
     bool_t s;
@@ -83,30 +83,21 @@ err_t DC_queue_add(DC_queue_t *queue,
                    OBJ_t obj,
                    bool_t block,
                    uint32_t timeout) {
-    if (ISERR (DC_thread_mutex_lock(queue->t_mutex))) {
+    if (ISERR (DC_thread_mutex_lock(&queue->t_mutex))) {
         return E_ERROR;
     }
 
     if (QUEUE_FULL (queue)) {
         if (!block) {
-            DC_thread_mutex_unlock (queue->t_mutex);
+            DC_thread_mutex_unlock(&queue->t_mutex);
             DC_set_errcode (E_FULL);
             return E_ERROR;
         } else {
-
-            if (timeout > 0) {
-                if (ISERR (DC_thread_cond_timedwait(queue->t_cond,
-                                                    queue->t_mutex,
-                                                    timeout))) {
-                    DC_thread_mutex_unlock (queue->t_mutex);
-                    return E_ERROR;
-                }
-            } else {
-                if (ISERR (DC_thread_cond_wait(queue->t_cond,
-                                               queue->t_mutex))) {
-                    DC_thread_mutex_unlock (queue->t_mutex);
-                    return E_ERROR;
-                }
+            if (ISERR(DC_thread_cond_wait(&queue->t_cond,
+                                          &queue->t_mutex,
+                                          timeout))) {
+                DC_thread_mutex_unlock(&queue->t_mutex);
+                return E_ERROR;
             }
         }
     }
@@ -114,9 +105,9 @@ err_t DC_queue_add(DC_queue_t *queue,
 
     (*queue->head_ptr) = obj;
     queue->head_ptr = __recalc_address(queue, queue->head_ptr);
-    DC_thread_cond_signal (queue->t_cond);
+    DC_thread_cond_signal(&queue->t_cond, TRUE);
 
-    DC_thread_mutex_unlock (queue->t_mutex);
+    DC_thread_mutex_unlock(&queue->t_mutex);
 
     return E_OK;
 }
@@ -145,29 +136,21 @@ OBJ_t DC_queue_fetch(DC_queue_t *queue,
                      uint32_t timeout) {
     OBJ_t obj;
 
-    if (ISERR (DC_thread_mutex_lock(queue->t_mutex))) {
+    if (ISERR (DC_thread_mutex_lock(&queue->t_mutex))) {
         return queue->init_value;
     }
 
     if (QUEUE_EMPTY (queue)) {
         if (!block) {
-            DC_thread_mutex_unlock (queue->t_mutex);
+            DC_thread_mutex_unlock(&queue->t_mutex);
             DC_set_errcode (E_EMPTY);
             return queue->init_value;
         } else {
-            if (timeout > 0) {
-                if (ISERR (DC_thread_cond_timedwait(queue->t_cond,
-                                                    queue->t_mutex,
-                                                    timeout))) {
-                    DC_thread_mutex_unlock (queue->t_mutex);
-                    return queue->init_value;
-                }
-            } else {
-                if (ISERR (DC_thread_cond_wait(queue->t_cond,
-                                               queue->t_mutex))) {
-                    DC_thread_mutex_unlock (queue->t_mutex);
-                    return queue->init_value;
-                }
+            if (ISERR(DC_thread_cond_wait(&queue->t_cond,
+                                          &queue->t_mutex,
+                                          timeout))) {
+                DC_thread_mutex_unlock(&queue->t_mutex);
+                return queue->init_value;
             }
         }
     }
@@ -176,8 +159,8 @@ OBJ_t DC_queue_fetch(DC_queue_t *queue,
     obj = *queue->tail_ptr;
     (*queue->tail_ptr) = queue->init_value;
     queue->tail_ptr = __recalc_address(queue, queue->tail_ptr);
-    DC_thread_cond_signal_all (queue->t_cond);
-    DC_thread_mutex_unlock (queue->t_mutex);
+    DC_thread_cond_signal(&queue->t_cond, TRUE);
+    DC_thread_mutex_unlock(&queue->t_mutex);
 
     return obj;
 }
@@ -193,6 +176,6 @@ void DC_queue_destroy(DC_queue_t *queue) {
         DC_free (queue->buf_ptr);
     }
 
-    DC_thread_mutex_destroy (queue->t_mutex);
-    DC_thread_cond_destroy (queue->t_cond);
+    DC_thread_mutex_destroy(&queue->t_mutex);
+    DC_thread_cond_destroy(&queue->t_cond);
 }

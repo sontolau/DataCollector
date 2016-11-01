@@ -2,8 +2,8 @@
 #define _DC_OBJECT_H
 
 #include "libdc.h"
-#include "locker.h"
 
+#if 0
 typedef struct _DC_object {
     int refcount;
     char class_name[SZ_CLASS_NAME+1];
@@ -77,5 +77,5 @@ do { \
     } \
 } while (0)
 */
-
+#endif
 #endif
