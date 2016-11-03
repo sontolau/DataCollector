@@ -86,11 +86,14 @@ do {\
     if (p >= endptr) p = NULL;\
 } while (0)
 
-char **DC_split_str(char *str, const char *delim, int *numstr) {
-    char *ptr = str, *endptr = NULL;
+char **DC_split_str(const char *src, const char *delim, int *numstr) {
+    char *ptr = NULL, *endptr = NULL;
+    char *str = NULL;
     int num = 0, i;
     int szdelim = strlen(delim);
     char **p1 = NULL, **p2 = NULL;
+    
+    ptr = str = strdup (src);
     endptr = ptr + strlen(str);
 
     while (ptr < endptr) {
@@ -103,7 +106,7 @@ char **DC_split_str(char *str, const char *delim, int *numstr) {
                 p1[i] = p2[i];
             }
             if (p2) free(p2);
-            p1[num - 1] = ptr;
+            p1[num - 1] = strdup (ptr);
         } else {
             break;
         }
@@ -116,6 +119,8 @@ char **DC_split_str(char *str, const char *delim, int *numstr) {
             break;
         }
     }
+
+    free (str);
 
     if (numstr) *numstr = num;
 
