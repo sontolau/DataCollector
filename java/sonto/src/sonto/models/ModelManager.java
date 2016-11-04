@@ -4,8 +4,8 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Map;
 
+import sonto.common.KeyValue;
 import sonto.db.DBIface;
 import sonto.db.impl.Mysql;
 import sonto.exception.InvalidClassException;
@@ -23,73 +23,61 @@ public class ModelManager {
     public ModelManager(Class<?> model) {
         this.model = model;
     }
-
-    private static void testModel(Class<?> model) throws InvalidClassException {
-        if (!model.getSuperclass().equals (Model.class)) {
-            throw new InvalidClassException();
-        }
+    
+    public Model[] filter(Filter[] filters) {
+        return null;
     }
     
-    public static void addModel(Class<?> model) throws Exception {
+    public Model get_or_create (KeyValue[] kvs) {
+        return null;
+    }
+
+    /*register a model, this method is mandatory before using model to process database.*/
+    public static void registerModel(Class<?> model) throws Exception {
         synchronized (models) {
-            int i = 0;
-            
             if (!model.getSuperclass().equals(Model.class)) {
                 throw new InvalidClassException();
             }
-            
-            Map<String, Field> map = new HashMap<String, Field>();
-            
-//            Method get_fields = model.getMethod("getFields", null);
-//            java.lang.reflect.Field pk = model.getField("pk");
-            java.lang.reflect.Field meta = model.getField ("meta");
-            Meta meta_info = (Meta)meta.get(model);
-            
+
+            java.lang.reflect.Field meta = model.getField("meta");
+            Meta meta_info = (Meta) meta.get(model);
+
+            /* new a default primary key for model */
+            meta_info.pk = new AutoField("id", 1, 1,
+                    new FieldAttribute[] { new FieldAttribute("isPrimaryKey",
+                            true) });
+
+            /* test if the table properties are defined. */
             java.lang.reflect.Field fields = model.getField("db_fields");
             java.lang.reflect.Field table_name = model.getField("db_table");
-            
+
             if (table_name != null) {
-                meta_info.table = (String)table_name.get(model);
+                meta_info.table = (String) table_name.get(model);
+            }
+
+            if (fields != null) {
+                Field[] sfields = (Field[]) fields.get(model);
+                for (Field f : sfields) {
+                    if (f.getAttribute("isPrimaryKey").test(true)) {
+                        meta_info.pk = f;
+                    }
+
+                    meta_info.fields_map.put(f.name, f);
+                }
             }
             
-            
-            
-            
-            
-            System.out.println((String)table_name.get(model));
-            
-           
-            
-
-            
-                    
-//            Field[] sfields = (Field[]) get_fields.invoke(null, null);
-
-            pk.set(model, new AutoField("id", 1, 1,
-                    new FieldAttribute[] {new FieldAttribute("isPrimaryKey",true)}));
-//            
-//            for (Field f : sfields) {
-//                if (f.getAttribute("isPrimaryKey").test(true)) {
-//                    pk.set(model, f);
-//                }
-//                map.put(f.name, f);
-//            }
-
-            fields.set(model, map);
-            
+            /* new a model manager for each model. */
             java.lang.reflect.Field manager = model.getField("manager");
             manager.set(model, new ModelManager(model));
-
             models.add(model);
         }
     }
 
-    
     public static void setSettings(Settings cls) throws NoSuchFieldException,
             SecurityException, InstantiationException, IllegalAccessException {
-//        if (cls.db_engine.toLowerCase().equals("mysql")) {
-//            db = new Mysql(cls.db_host, cls.db_port, cls.db_name, cls.db_user,
-//                    cls.db_password);
-//        }
+        // if (cls.db_engine.toLowerCase().equals("mysql")) {
+        // db = new Mysql(cls.db_host, cls.db_port, cls.db_name, cls.db_user,
+        // cls.db_password);
+        // }
     }
 }

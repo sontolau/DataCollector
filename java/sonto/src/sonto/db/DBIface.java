@@ -24,4 +24,5 @@ public abstract class DBIface {
 	abstract public void create_table(Class<Model> model, Map<String, String> options) throws Exception;
 	abstract public void update(Model model);
 	abstract public void insert (Model model);
+	abstract public void delete (Model model);
 }

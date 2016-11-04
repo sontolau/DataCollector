@@ -12,17 +12,13 @@ public class User extends Model {
         // TODO Auto-generated constructor stub
     }
 
+	/* set table name */
     public static String db_table = "wb_user";
     public static Field[] db_fields = new Field[] {new CharField("username", 255, null),
         new CharField("password", 50, null)};
-    /*
-	public static Field[] getFields() {
-	    return new Field[] {new CharField("username", 255, null),
-	                        new CharField("password", 50, null)};
-	}*/
 	
 	public static void main(String[] argv) throws Exception {
-		ModelManager.addModel(User.class);
+		ModelManager.registerModel(User.class);
 		User.dumpFields();
 	}
 }
