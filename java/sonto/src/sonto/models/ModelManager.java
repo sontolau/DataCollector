@@ -24,9 +24,9 @@ public class ModelManager {
         this.model = model;
     }
     
-    public Model[] filter(Filter[] filters) {
-        return null;
-    }
+//    public Model[] filter(Filter[] filters) {
+//        return null;
+//    }
     
     public Model get_or_create (KeyValue[] kvs) {
         return null;

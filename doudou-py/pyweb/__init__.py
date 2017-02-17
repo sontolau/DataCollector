@@ -1,0 +1,1 @@
+default_app_config = 'pyweb.mod_auth.apps.ModAuthConfig'
