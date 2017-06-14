@@ -9,5 +9,5 @@ setup(
     author='sonto.lau',
     author_email='sonto.lau@gmail.com',
     url='',
-    packages=["pyweb", "pyweb.mod_auth"],
+    packages=["pyweb", "pyweb.mod_auth", "pyweb.mod_auth.migrations"],
 )
